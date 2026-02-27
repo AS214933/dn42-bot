@@ -134,6 +134,8 @@ try:
         tools.get_map(update=pickle.load(f))
 except BaseException:
     tools.get_map(update=True)
+if config.FLAPALERTED_URL:
+    tools.get_flaps(update=True)
 
 
 # Setup scheduler
@@ -159,6 +161,8 @@ scheduler_add_job(tools.get_map, kwargs={"update": True}, minute="*/3")
 scheduler_add_job(tools.update_china_ip, hour="1", minute="30")
 scheduler_add_job(tools.update_as_route_table, minute="7/15")
 scheduler.add_job(run_update_registry, trigger="cron", minute="*/5", id="dn42bot_update_registry", replace_existing=True)
+if config.FLAPALERTED_URL:
+    scheduler_add_job(tools.get_flaps, kwargs={"update": True}, minute="*/5")
 scheduler.start()
 
 
@@ -186,9 +190,10 @@ cmd_list = {
     "rank": ("Show DN42 global ranking 显示 DN42 总体排名", True),
     "stats": ("Show DN42 user basic info & statistics 显示 DN42 用户基本信息及数据", True),
     "peer_list": ("Show the peer situation of a user 显示某 DN42 用户的 Peer 情况", True),
-    "block": ("Block an ASN 拉黑一个 ASN", False),
-    "unblock": ("Unblock an ASN 取消拉黑一个 ASN", False),
-    "blocked": ("Get blocked ASN list 获取已拉黑的 ASN 列表", False),
+}
+if config.FLAPALERTED_URL:
+    cmd_list["flaps"] = ("Show current flap prefixes 显示当前抖动前缀", True)
+cmd_list |= {
     "cancel": ("Cancel ongoing operations 取消正在进行的操作", True),
     "help": ("Get help text 获取帮助文本", True),
 }

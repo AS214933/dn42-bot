@@ -53,11 +53,8 @@
 - Statistics
   - [x] DN42 global ranking
   - [x] DN42 user basic info & statistics
-  - [x] Peer situation of a user
-  - [x] Preferred routes ranking
-- Blacklist
-  - [x] Block / Unblock an ASN
-  - [x] Get blocked ASN list
+  - [x] Peer list of a user
+  - [x] FlapAlerted Integration
 
 ## Deployment
 
@@ -91,6 +88,7 @@ Config items are located at `server/config.py`.
 | LG_DOMAIN           | (Optional) URL of looking glass. Support bird-lg's URL format                                  |
 | PRIVILEGE_CODE      | (Optional) Privilege code                                                                      |
 | SINGLE_PRIVILEGE    | (Optional) Whether to disable the privilege code when a privileged user already logs in        |
+| FLAPALERTED_URL     | (Optional) URL of your FlapAlerted instance. Leave empty to disable FlapAlerted integration    |
 | CN_WHITELIST_IP     | (Optional) A list of IP networks that been explicitly marked as non-Chinese-Mainland           |
 | SENTRY_DSN          | (Optional) Sentry DSN. Leave empty to disable Sentry exception tracking                        |
 
