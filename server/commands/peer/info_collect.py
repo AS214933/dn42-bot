@@ -760,6 +760,56 @@ def post_pubkey(message, peer_info):
         )
         return "post_pubkey", peer_info, msg
     peer_info["PublicKey"] = message.text.strip()
+    return "pre_psk", peer_info, message
+
+
+def pre_psk(message, peer_info):
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row_width = 1
+    if peer_info.get("PresharedKey"):
+        markup.add(KeyboardButton("Keep current"), KeyboardButton("Skip"))
+    else:
+        markup.add(KeyboardButton("Skip"))
+    msg = bot.send_message(
+        message.chat.id,
+        (
+            "Input your WireGuard PresharedKey (optional)\n"
+            "请输入你的 WireGuard 预共享密钥（可选）\n"
+            "\n"
+            "If you don't need a PresharedKey, please select `Skip`.\n"
+            "如果你不需要预共享密钥，请选择 `Skip`。"
+        ),
+        parse_mode="Markdown",
+        reply_markup=markup,
+    )
+    return "post_psk", peer_info, msg
+
+
+def post_psk(message, peer_info):
+    text = message.text.strip()
+    if text.lower() == "skip":
+        peer_info["PresharedKey"] = None
+        return "pre_contact", peer_info, message
+    if text.lower() == "keep current" and peer_info.get("PresharedKey"):
+        return "pre_contact", peer_info, message
+    if len(text) != 44 or text[-1] != "=":
+        markup = ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.row_width = 1
+        markup.add(KeyboardButton("Skip"))
+        msg = bot.send_message(
+            message.chat.id,
+            (
+                "Invalid PresharedKey, please try again. Use /cancel to interrupt the operation.\n"
+                "输入不是有效的预共享密钥，请重试。使用 /cancel 终止操作。\n"
+                "\n"
+                "If you don't need a PresharedKey, please select `Skip`.\n"
+                "如果你不需要预共享密钥，请选择 `Skip`。"
+            ),
+            parse_mode="Markdown",
+            reply_markup=markup,
+        )
+        return "post_psk", peer_info, msg
+    peer_info["PresharedKey"] = text
     return "pre_contact", peer_info, message
 
 

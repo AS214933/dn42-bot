@@ -81,6 +81,7 @@ def recreate_peer_info(message, chosen):
         "Request-LinkLocal": "Not required due to not use LLA as IPv6",
         "Clearnet": raw_info["clearnet"],
         "PublicKey": raw_info["pubkey"],
+        "PresharedKey": raw_info.get("psk"),
         "Port": raw_info["port"],
         "Contact": raw_info["desc"],
         "Net_Support": raw_info["net_support"],
@@ -135,6 +136,17 @@ def get_diff_text(old_peer_info, peer_info):
     diff_text += "Tunnel:\n"
     diff_print("Clearnet", "Endpoint:    ")
     diff_print("PublicKey", "PublicKey:   ")
+
+    # PresharedKey: display as "Set" / "Not set" instead of raw value
+    old_psk_display = "Set" if old_peer_info.get("PresharedKey") else "Not set"
+    new_psk_display = "Set" if peer_info.get("PresharedKey") else "Not set"
+    if new_psk_display == old_psk_display:
+        diff_text += f"    PresharedKey: {new_psk_display}\n"
+    else:
+        diff_text += f"    PresharedKey: {old_psk_display}\n"
+        diff_text += "  ->\n"
+        diff_text += f"    PresharedKey: {new_psk_display}\n"
+
     diff_text += "Contact:\n"
     diff_print("Contact")
     return diff_text.strip()
@@ -247,7 +259,8 @@ def pre_first_action_choose(message, peer_info):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row(KeyboardButton("Region"), KeyboardButton("Clearnet Endpoint"))
     markup.row(KeyboardButton("Session Type"), KeyboardButton("WireGuard PublicKey"))
-    markup.row(KeyboardButton("DN42 IP"), KeyboardButton("Contact"))
+    markup.row(KeyboardButton("DN42 IP"), KeyboardButton("WireGuard PresharedKey"))
+    markup.row(KeyboardButton("Contact"))
     markup.row(KeyboardButton("Finish modification"), KeyboardButton("Abort modification"))
     msg = bot.send_message(
         message.chat.id,
@@ -270,6 +283,9 @@ def pre_first_action_choose(message, peer_info):
             "- `WireGuard PublicKey`\n"
             "  Change public key of WireGuard tunnel\n"
             "  修改 WireGuard 公钥\n"
+            "- `WireGuard PresharedKey`\n"
+            "  Change or remove PresharedKey of WireGuard tunnel\n"
+            "  修改或移除 WireGuard 预共享密钥\n"
             "- `Contact`\n"
             "  Change contact\n"
             "  修改联系方式\n"
@@ -291,7 +307,8 @@ def pre_action_choose(message, peer_info):
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row(KeyboardButton("Region"), KeyboardButton("Clearnet Endpoint"))
     markup.row(KeyboardButton("Session Type"), KeyboardButton("WireGuard PublicKey"))
-    markup.row(KeyboardButton("DN42 IP"), KeyboardButton("Contact"))
+    markup.row(KeyboardButton("DN42 IP"), KeyboardButton("WireGuard PresharedKey"))
+    markup.row(KeyboardButton("Contact"))
     markup.row(KeyboardButton("Finish modification"), KeyboardButton("Abort modification"))
 
     diff_text = get_diff_text(peer_info["backup"], peer_info)
@@ -318,6 +335,7 @@ def post_action_choose(message, peer_info):
         "DN42 IP",
         "Clearnet Endpoint",
         "WireGuard PublicKey",
+        "WireGuard PresharedKey",
         "Contact",
         "Finish modification",
         "Abort modification",
@@ -325,7 +343,8 @@ def post_action_choose(message, peer_info):
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.row(KeyboardButton("Region"), KeyboardButton("Clearnet Endpoint"))
         markup.row(KeyboardButton("Session Type"), KeyboardButton("WireGuard PublicKey"))
-        markup.row(KeyboardButton("DN42 IP"), KeyboardButton("Contact"))
+        markup.row(KeyboardButton("DN42 IP"), KeyboardButton("WireGuard PresharedKey"))
+        markup.row(KeyboardButton("Contact"))
         markup.row(KeyboardButton("Finish modification"), KeyboardButton("Abort modification"))
         msg = bot.send_message(
             message.chat.id,
@@ -348,7 +367,9 @@ def post_action_choose(message, peer_info):
     elif message.text.strip() == "Clearnet Endpoint":
         return "pre_clearnet", peer_info, message, "pre_pubkey"
     elif message.text.strip() == "WireGuard PublicKey":
-        return "pre_pubkey", peer_info, message, "pre_contact"
+        return "pre_pubkey", peer_info, message, "pre_psk"
+    elif message.text.strip() == "WireGuard PresharedKey":
+        return "pre_psk", peer_info, message, "pre_contact"
     elif message.text.strip() == "Contact":
         return "pre_contact", peer_info, message, "pre_confirm"
     elif message.text.strip() == "Finish modification":

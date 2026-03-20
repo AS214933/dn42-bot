@@ -21,6 +21,7 @@ def start_peer(message):
         "Request-LinkLocal": "Not required due to not use LLA as IPv6",
         "Clearnet": None,
         "PublicKey": None,
+        "PresharedKey": None,
         "Port": None,
         "Contact": None,
     }
@@ -106,6 +107,7 @@ def pre_confirm(message, peer_info):
         "Tunnel:\n"
         f"    Endpoint:    {peer_info['Clearnet']}\n"
         f"    PublicKey:   {peer_info['PublicKey']}\n"
+        f"    PresharedKey: {'Set' if peer_info['PresharedKey'] else 'Not set'}\n"
         "Contact:\n"
         f"    {peer_info['Contact']}\n"
     )

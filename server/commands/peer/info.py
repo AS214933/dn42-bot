@@ -42,7 +42,7 @@ def td_format(seconds):
     return ", ".join(strings) + " ago"
 
 
-def basic_info(asn, endpoint, pubkey, v6, v4):
+def basic_info(asn, endpoint, pubkey, v6, v4, psk=None):
     text = (
         "    ASN:\n"
         f"        AS{asn}\n"
@@ -50,8 +50,11 @@ def basic_info(asn, endpoint, pubkey, v6, v4):
         f"        {endpoint}\n"
         "    WireGuard Public Key:\n"
         f"        {pubkey}\n"
-        "    DN42 Address:\n"
     )
+    if psk is not None:
+        text += "    WireGuard PresharedKey:\n"
+        text += f"        {'Set' if psk else 'Not set'}\n"
+    text += "    DN42 Address:\n"
     ipv6_space = ""
     try:
         if ip_address(v6) in IPv6Network("fc00::/7"):
@@ -194,6 +197,7 @@ def get_info_text(chatid, asn, node):
         peer_info["pubkey"],
         peer_info["v6"],
         peer_info["v4"],
+        psk=peer_info.get("psk"),
     )
     detail_text += "Information on my side:\n"
     detail_text += basic_info(

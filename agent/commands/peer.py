@@ -72,6 +72,7 @@ async def get_info(request):
         r"PostUp = ip addr add " + str(base.MY_DN42_IPv4_ADDRESS) + r"/32(?: peer ([0-9.]+)/32)? dev %i\n"
         r"\[Peer\]\n"
         r"PublicKey = (.{43}=)\n"
+        r"(?:PresharedKey = (.{43}=)\n)?"
         r"(?:Endpoint = (.+:[0-9]{,5})\n)?"
         r"AllowedIPs = "
     )
@@ -108,8 +109,9 @@ async def get_info(request):
         v6 = wg_info[3]
         my_v6 = str(base.MY_DN42_ULA_ADDRESS)
     my_v4 = str(base.MY_DN42_IPv4_ADDRESS) if wg_info[4] else None
-    if wg_info[6]:
-        clearnet = wg_info[6]
+    psk = wg_info[6] if wg_info[6] else None
+    if wg_info[7]:
+        clearnet = wg_info[7]
     else:
         clearnet = None
 
@@ -209,6 +211,7 @@ async def get_info(request):
             "v4": wg_info[4],
             "clearnet": clearnet,
             "pubkey": wg_info[5],
+            "psk": psk,
             "desc": desc,
             "session": session,
             "session_name": session_name,
@@ -281,9 +284,11 @@ async def setup_peer(request):
         "PostUp = ip addr add {my_ipv4}/32{ipv4} dev %i\n"
         "[Peer]\n"
         "PublicKey = {pubkey}\n"
+        "{psk}"
         "Endpoint = {clearnet}\n"
         "AllowedIPs = 172.20.0.0/14, 10.0.0.0/8, 172.31.0.0/16, fd00::/8, fe80::/64\n"
     )
+    psk_line = f"PresharedKey = {peer_info['PresharedKey']}\n" if peer_info.get("PresharedKey") else ""
     final_wg_text = wg.format(
         comment=f"{peer_info['ASN']} - {peer_info['Contact']}",
         port=peer_info["Port"],
@@ -294,6 +299,7 @@ async def setup_peer(request):
         my_ula=str(base.MY_DN42_ULA_ADDRESS),
         my_ipv4=str(base.MY_DN42_IPv4_ADDRESS),
         pubkey=peer_info["PublicKey"],
+        psk=psk_line,
         clearnet=peer_info["Clearnet"],
     )
     if peer_info["Clearnet"] is None:
