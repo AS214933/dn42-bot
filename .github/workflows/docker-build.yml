@@ -5,12 +5,14 @@ on:
     branches:
       - main
       - master
+      - v1-hot-potato
     tags:
       - 'v*'
   pull_request:
     branches:
       - main
       - master
+      - v1-hot-potato
   workflow_dispatch:
 
 env:
