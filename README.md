@@ -13,6 +13,7 @@
  - 修改了默认数据存放位置
  - 修改了 `login` 的相关逻辑以支持 Org 类的 ASN 登录
  - 新增了部分参数
+ - 新增了对 WireGuard PreshareKey 的支持
 
 ## 新增配置
 `server/config.py`：
