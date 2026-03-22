@@ -115,8 +115,9 @@ def load_plugins():
 
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
-            # Register under short name so relative imports resolve
-            sys.modules[name] = module
+            # NOTE: Do NOT register under short name (sys.modules[name])
+            # because it may shadow stdlib or third-party packages.
+            # e.g. plugin name "email" would override Python's email module.
             spec.loader.exec_module(module)
 
             # 5. Register handlers
