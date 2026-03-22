@@ -55,6 +55,15 @@ SENTRY_DSN = None
 #     },
 # ]
 
+# Poste.io Email Plugin settings (required if email plugin is enabled)
+# POSTE_API_URL = "https://mail.x.dn42"           # API 调用地址（可以是内网地址）
+# POSTE_REAL_URL = "https://mail.x.dn42"          # 用户访问的 Webmail 地址（可选，默认同 API_URL）
+# POSTE_ADMIN_EMAIL = "admin@x.dn42"
+# POSTE_ADMIN_PASSWORD = "your_admin_password"
+# POSTE_DOMAIN = "x.dn42"
+# POSTE_VERIFY_SSL = False
+# POSTE_REGISTER_MODE = "open"                    # "open" | "approval" | "closed"
+
 # Email-sending function
 def send_email(asn, mnt, code, email):
     text = (
