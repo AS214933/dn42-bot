@@ -8,6 +8,7 @@ import time
 import base
 import commands  # noqa: F401
 import config
+import plugins
 import sentry_sdk
 import telebot
 import tools
@@ -210,6 +211,23 @@ data_dir = "./data"
 os.makedirs(data_dir, exist_ok=True)
 bot.enable_save_next_step_handlers(delay=2, filename=os.path.join(data_dir, "step.save"))
 bot.load_next_step_handlers(filename=os.path.join(data_dir, "step.save"))
+
+# Load plugins
+plugins.load_plugins()
+plugin_cmds = {}
+for pname, pmod in plugins.get_loaded_plugins().items():
+    if hasattr(pmod, "COMMANDS"):
+        plugin_cmds.update(pmod.COMMANDS)
+if plugin_cmds:
+    cmd_list.update(plugin_cmds)
+    bot.delete_my_commands()
+    bot.set_my_commands(
+        [telebot.types.BotCommand(cmd, desc) for cmd, (desc, public_available) in cmd_list.items() if public_available]
+    )
+    bot.set_my_commands(
+        [telebot.types.BotCommand(cmd, desc) for cmd, (desc, _) in cmd_list.items()],
+        scope=BotCommandScopeAllPrivateChats(),
+    )
 
 
 bot.remove_webhook()

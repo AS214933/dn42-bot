@@ -14,15 +14,37 @@
  - 修改了 `login` 的相关逻辑以支持 Org 类的 ASN 登录
  - 新增了部分参数
  - 新增了对 WireGuard PreshareKey 的支持
+ - **新增插件系统** — 支持通过 Git 仓库加载外部插件
 
 ## 新增配置
 `server/config.py`：
 | Config Key          | Description                                                                                    |
 | ------------------- | ---------------------------------------------------------------------------------------------- |
 | DIG_ADDRESS         | The address of /dig                                                                            |
+| PLUGINS             | (Optional) Plugin list — `[{"git": "<repo_url>", "name": "<name>"}]`                          |
 
 ## TODO
  - [ ] 支持节点审批
+
+## 插件系统
+
+本项目支持基于 Git 仓库的插件系统。每个插件为一个独立的 Git 仓库，在 `config.py` 中通过 `PLUGINS` 列表指定。
+
+启动时，插件加载器会自动 clone / pull 仓库到 `./data/plugins_repos/<name>/`，安装插件自身的 `requirements.txt` 依赖，然后动态导入并注册。
+
+### 配置方式
+
+在 `server/config.py` 中添加：
+
+```python
+PLUGINS = [
+    {
+        "git": "https://github.com/yourname/your-plugin.git",
+        "name": "your_plugin",
+        # "branch": "main",  # 可选，指定分支
+    },
+]
+```
 
 ## 注意事项
  - 使用特权码登录时，请按照输入 `/login <ASN>` - 选择 `📧 Email Verification 邮箱验证` - 输入特权码的步骤登录。

@@ -46,6 +46,14 @@ FLAPALERTED_URL = "https://flap-dn42.potat0.cc/"
 CN_WHITELIST_IP = ["8.8.8.8", "2001:4860:4860::8888"]
 SENTRY_DSN = None
 
+# Plugin system — load plugins from Git repositories
+# Each entry: {"git": "<repo_url>", "name": "<plugin_name>", "branch": "<optional_branch>"}
+# PLUGINS = [
+#     {
+#         "git": "https://github.com/yourname/email-plugin.git",
+#         "name": "email",
+#     },
+# ]
 
 # Email-sending function
 def send_email(asn, mnt, code, email):

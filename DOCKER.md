@@ -20,6 +20,8 @@ services:
 
 `config.py` 文件请参考 `server/config.example.py` 进行修改。
 
+> **插件说明**：插件通过 Git 仓库自动加载。在 `config.py` 的 `PLUGINS` 列表中指定插件 Git 地址和名称，启动时会自动 clone 到 `./data/plugins_repos/` 目录。Docker 镜像已内置 `git`，无需额外配置。插件数据存放在 `./data/plugins/` 下，由 `./data` volume 统一管理。
+
 ## Agent
 
 Docker Compose 示例：
