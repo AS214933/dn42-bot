@@ -8,8 +8,8 @@ from functools import partial
 import config
 import tools
 from base import bot, db, db_privilege
+from commands.tools.whois import whois_raw_query
 from telebot.types import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
-from tools import registry
 
 
 def get_email(asn):
@@ -50,17 +50,7 @@ def get_email(asn):
     
     def get_contact_text(contact_id):
         """获取 contact 的 whois 信息"""
-        text = registry.get_whois_info_from_registry(contact_id)
-        if text:
-            return text
-        # Fallback to whois command
-        try:
-            return subprocess.check_output(
-                shlex.split(f"whois -h {config.WHOIS_ADDRESS} {contact_id}"),
-                timeout=3
-            ).decode("utf-8")
-        except BaseException:
-            return None
+        return whois_raw_query(contact_id, timeout=3)
     
     def recursive_get_emails(contact_id, visited=None, depth=0):
         """递归获取 contact 及其子 contact 的所有 email"""
@@ -87,17 +77,11 @@ def get_email(asn):
         return emails
     
     try:
-        # 从本地 registry 获取 ASN 信息
-        whois_text = registry.get_whois_info_from_registry(str(asn))
+        # 优先本地 registry，兜底远程 whois
+        whois_text = whois_raw_query(str(asn), timeout=5)
         
         if not whois_text:
-            # Fallback to whois command
-            whois_text = subprocess.check_output(
-                shlex.split(f"whois -h {config.WHOIS_ADDRESS} {asn}"),
-                timeout=3
-            ).decode("utf-8")
-        
-        # 收集 admin-c 和 tech-c
+            return set()
         contacts = extract_contacts_from_text(whois_text)
         
         if not contacts:
@@ -122,16 +106,12 @@ def get_auth(asn):
     """
     try:
         # 首先获取 ASN 的 mnt-by 字段
-        whois_text = registry.get_whois_info_from_registry(str(asn))
+        whois_text = whois_raw_query(str(asn), timeout=5)
         
-        if whois_text:
-            whois = whois_text.splitlines()
-        else:
-            whois = (
-                subprocess.check_output(shlex.split(f"whois -h {config.WHOIS_ADDRESS} {asn}"), timeout=3)
-                .decode("utf-8")
-                .splitlines()[3:]
-            )
+        if not whois_text:
+            return set()
+        
+        whois = whois_text.splitlines()
         
         # 从 ASN 信息中获取 mnt-by
         mnt_by = None
@@ -144,16 +124,12 @@ def get_auth(asn):
             return set()
         
         # 从 mntner 获取 auth 字段
-        mntner_text = registry.get_whois_info_from_registry(mnt_by)
+        mntner_text = whois_raw_query(mnt_by, timeout=5)
         
-        if mntner_text:
-            mntner_whois = mntner_text.splitlines()
-        else:
-            mntner_whois = (
-                subprocess.check_output(shlex.split(f"whois -h {config.WHOIS_ADDRESS} {mnt_by}"), timeout=3)
-                .decode("utf-8")
-                .splitlines()[3:]
-            )
+        if not mntner_text:
+            return set()
+        
+        mntner_whois = mntner_text.splitlines()
         
         auths = set()
         for line in mntner_whois:

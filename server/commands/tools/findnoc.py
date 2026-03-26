@@ -1,11 +1,8 @@
 import re
-import shlex
-import subprocess
 
-import config
 import tools
 from base import bot
-from tools import registry
+from commands.tools.whois import whois_raw_query
 
 
 def get_asn_name(asn):
@@ -19,8 +16,7 @@ def get_asn_name(asn):
         str: ASN 名称，如果未找到则返回 None
     """
     try:
-        # 从本地 registry 获取
-        whois_text = registry.get_whois_info_from_registry(str(asn))
+        whois_text = whois_raw_query(str(asn), timeout=5)
         
         if whois_text:
             for line in whois_text.splitlines():
@@ -72,17 +68,7 @@ def get_noc_emails(asn):
     
     def get_contact_text(contact_id):
         """获取 contact 的 whois 信息"""
-        text = registry.get_whois_info_from_registry(contact_id)
-        if text:
-            return text
-        # Fallback to whois command
-        try:
-            return subprocess.check_output(
-                shlex.split(f"whois -h {config.WHOIS_ADDRESS} {contact_id}"),
-                timeout=3
-            ).decode("utf-8")
-        except BaseException:
-            return None
+        return whois_raw_query(contact_id, timeout=3)
     
     def recursive_get_emails(contact_id, visited=None, depth=0):
         """递归获取 contact 及其子 contact 的所有 email"""
@@ -108,15 +94,11 @@ def get_noc_emails(asn):
         return emails
     
     try:
-        # 从本地 registry 获取 ASN 信息
-        whois_text = registry.get_whois_info_from_registry(str(asn))
+        # 优先本地 registry，兜底远程 whois
+        whois_text = whois_raw_query(str(asn), timeout=5)
         
         if not whois_text:
-            # Fallback to whois command
-            whois_text = subprocess.check_output(
-                shlex.split(f"whois -h {config.WHOIS_ADDRESS} AS{asn}"),
-                timeout=3
-            ).decode("utf-8")
+            return set()
         
         # 收集 admin-c 和 tech-c
         contacts = extract_contacts_from_text(whois_text)

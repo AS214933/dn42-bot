@@ -6,6 +6,7 @@ import os
 import subprocess
 import threading
 import time
+from ipaddress import ip_address, ip_network, IPv4Address, IPv6Address
 from pathlib import Path
 from typing import Optional, Dict, List
 
@@ -265,12 +266,86 @@ def find_mntner_file(mntner_id: str) -> Optional[str]:
     return None
 
 
+def _read_registry_file(file_path: str) -> Optional[str]:
+    """Read and return the content of a registry file."""
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            return f.read().strip()
+    except (IOError, OSError) as e:
+        print(f"Error reading registry file {file_path}: {e}")
+        return None
+
+
+def _find_file_in_dir(directory: str, filename: str) -> Optional[str]:
+    """Find a file by exact name in a registry data subdirectory."""
+    if not os.path.exists(REGISTRY_PATH):
+        return None
+    dir_path = os.path.join(REGISTRY_PATH, "data", directory)
+    if not os.path.exists(dir_path):
+        return None
+    file_path = os.path.join(dir_path, filename)
+    if os.path.exists(file_path):
+        return file_path
+    return None
+
+
+def _find_ip_prefix_file(query: str, dirs: list) -> Optional[str]:
+    """
+    Find registry file for an IP address or CIDR prefix.
+    Supports exact CIDR match and single IP lookup (most specific prefix).
+    
+    Args:
+        query: IP address or CIDR prefix string
+        dirs: list of (ipv4_dir, ipv6_dir) names to search
+    """
+    if not os.path.exists(REGISTRY_PATH):
+        return None
+    try:
+        if '/' in query:
+            net = ip_network(query, strict=False)
+            filename = str(net.network_address) + "_" + str(net.prefixlen)
+            subdir = dirs[1] if net.version == 6 else dirs[0]
+            return _find_file_in_dir(subdir, filename)
+        else:
+            addr = ip_address(query)
+    except ValueError:
+        return None
+
+    subdir = dirs[1] if isinstance(addr, IPv6Address) else dirs[0]
+    dir_path = os.path.join(REGISTRY_PATH, "data", subdir)
+    if not os.path.exists(dir_path):
+        return None
+
+    best_match = None
+    best_prefixlen = -1
+    try:
+        for fname in os.listdir(dir_path):
+            if '_' not in fname:
+                continue
+            try:
+                net = ip_network(fname.replace('_', '/'), strict=False)
+                if net.prefixlen == 0:
+                    continue
+                if addr in net and net.prefixlen > best_prefixlen:
+                    best_prefixlen = net.prefixlen
+                    best_match = os.path.join(dir_path, fname)
+            except ValueError:
+                continue
+    except (IOError, OSError):
+        pass
+    return best_match
+
+
 def get_whois_info_from_registry(query: str) -> Optional[str]:
     """
     Get whois information from local registry for a given query.
     
+    Supports: ASN, inetnum/inet6num (IP/CIDR), route/route6,
+    person, role, mntner, organisation, dns, as-set, as-block,
+    key-cert, route-set, schema.
+    
     Args:
-        query: ASN (like "4242420000" or "AS4242420000") or other identifier
+        query: ASN, IP/CIDR, domain, or other identifier
         
     Returns:
         Full whois text from the registry file, or None if not found
@@ -287,45 +362,46 @@ def get_whois_info_from_registry(query: str) -> Optional[str]:
         asn = int(asn_str)
         file_path = find_asn_file(asn)
         if file_path:
-            try:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    return f.read().strip()
-            except (IOError, OSError) as e:
-                print(f"Error reading ASN file {file_path}: {e}")
-                return None
+            return _read_registry_file(file_path)
     except ValueError:
-        # Not an ASN, try other types
         pass
+    
+    # Try as IP address or CIDR (inetnum/inet6num + route/route6)
+    inetnum_path = _find_ip_prefix_file(query, ["inetnum", "inet6num"])
+    if inetnum_path:
+        content = _read_registry_file(inetnum_path)
+        if content:
+            route_path = _find_ip_prefix_file(query, ["route", "route6"])
+            if route_path:
+                route_content = _read_registry_file(route_path)
+                if route_content:
+                    content += f"\n\n{route_content}"
+            return content
+
+    route_path = _find_ip_prefix_file(query, ["route", "route6"])
+    if route_path:
+        return _read_registry_file(route_path)
     
     # Try as person/role
     file_path = find_person_file(query)
     if file_path:
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                return f.read().strip()
-        except (IOError, OSError) as e:
-            print(f"Error reading person file {file_path}: {e}")
-            return None
+        return _read_registry_file(file_path)
     
     # Try as maintainer
     file_path = find_mntner_file(query)
     if file_path:
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                return f.read().strip()
-        except (IOError, OSError) as e:
-            print(f"Error reading mntner file {file_path}: {e}")
-            return None
+        return _read_registry_file(file_path)
     
     # Try as organisation
     file_path = find_organisation_file(query)
     if file_path:
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                return f.read().strip()
-        except (IOError, OSError) as e:
-            print(f"Error reading organisation file {file_path}: {e}")
-            return None
+        return _read_registry_file(file_path)
+    
+    # Try remaining types: dns, as-set, as-block, key-cert, route-set, schema
+    for subdir in ["dns", "as-set", "as-block", "key-cert", "route-set", "schema"]:
+        file_path = _find_file_in_dir(subdir, query)
+        if file_path:
+            return _read_registry_file(file_path)
     
     return None
 
