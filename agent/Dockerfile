@@ -1,13 +1,13 @@
 # Build stage for tcping
-FROM golang:alpine AS tcping-builder
+FROM golang:1.24-alpine AS tcping-builder
 
-RUN apk add --no-cache git
+RUN apk add --no-cache git bash make
 
-# Build nodeseeker/tcping from source
+# Build pouriyajamshidi/tcping from source
 RUN set -e; \
-    git clone --depth 1 https://github.com/nodeseeker/tcping.git /tmp/tcping && \
+    git clone --depth 1 https://github.com/pouriyajamshidi/tcping.git /tmp/tcping && \
     cd /tmp/tcping && \
-    GOTOOLCHAIN=auto CGO_ENABLED=0 go build -trimpath -ldflags="-w -s" -o tcping ./src/main.go
+    make build
 
 # Python builder stage
 FROM python:3.14-slim AS python-builder
@@ -41,7 +41,7 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy tcping binary from builder stage
-COPY --from=tcping-builder /tmp/tcping/tcping /usr/local/bin/tcping
+COPY --from=tcping-builder /tmp/tcping/target/tcping /usr/local/bin/tcping
 RUN chmod +x /usr/local/bin/tcping
 
 # Copy Python packages from builder
