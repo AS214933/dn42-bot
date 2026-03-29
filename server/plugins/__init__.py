@@ -27,16 +27,35 @@ _loaded_plugins = {}
 _REPOS_DIR = os.path.join(".", "data", "plugins_repos")
 
 
-def _clone_or_pull(git_url: str, name: str) -> str:
-    """Clone repo if not present, otherwise git pull. Returns local path."""
+def _clone_or_pull(git_url: str, name: str) -> tuple[str, bool]:
+    """Clone repo if not present, otherwise git pull.
+
+    Returns (local_path, updated) where updated=True if code changed.
+    """
     dest = os.path.join(_REPOS_DIR, name)
+    updated = False
     if os.path.isdir(os.path.join(dest, ".git")):
+        # Capture current HEAD before pull
+        old_head = subprocess.run(
+            ["git", "-C", dest, "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+
         print(f"[Plugin] Updating {name} ...")
         subprocess.run(
             ["git", "-C", dest, "pull", "--ff-only", "-q"],
             timeout=60,
             check=False,
         )
+
+        new_head = subprocess.run(
+            ["git", "-C", dest, "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+
+        updated = old_head != new_head
+        if updated:
+            print(f"[Plugin] {name} updated: {old_head[:8]} -> {new_head[:8]}")
     else:
         os.makedirs(_REPOS_DIR, exist_ok=True)
         print(f"[Plugin] Cloning {name} from {git_url} ...")
@@ -45,7 +64,8 @@ def _clone_or_pull(git_url: str, name: str) -> str:
             timeout=120,
             check=True,
         )
-    return dest
+        updated = True  # Fresh clone always needs build
+    return dest, updated
 
 
 def _install_requirements(plugin_dir: str, name: str):
@@ -58,6 +78,61 @@ def _install_requirements(plugin_dir: str, name: str):
             timeout=120,
             check=True,
         )
+
+
+def _build_frontend(plugin_dir: str, name: str, force: bool = False):
+    """Build web frontend if present and needed.
+
+    Looks for web/frontend/package.json inside the plugin directory.
+    Triggers a build when:
+      - dist/ does not exist or is empty (first time)
+      - force=True (plugin code was updated via git pull)
+    Requires Node.js / npm to be available in the container.
+    """
+    frontend_dir = os.path.join(plugin_dir, "web", "frontend")
+    pkg_json = os.path.join(frontend_dir, "package.json")
+    dist_dir = os.path.join(frontend_dir, "dist")
+
+    if not os.path.isfile(pkg_json):
+        return  # No frontend to build
+
+    need_build = False
+    if not os.path.isdir(dist_dir) or not os.listdir(dist_dir):
+        need_build = True
+    elif force:
+        print(f"[Plugin] Frontend source updated for {name}, rebuilding...")
+        need_build = True
+
+    if not need_build:
+        print(f"[Plugin] Frontend already built for {name}, skipping.")
+        return
+
+    # Check npm availability
+    npm_cmd = "npm"
+    if subprocess.run(["which", "npm"], capture_output=True).returncode != 0:
+        print(f"[Plugin] WARNING: npm not found, cannot build frontend for {name}.")
+        print(f"[Plugin] Install Node.js in the Docker image or build frontend manually.")
+        return
+
+    print(f"[Plugin] Building frontend for {name} ...")
+    try:
+        subprocess.run(
+            [npm_cmd, "install"],
+            cwd=frontend_dir,
+            timeout=120,
+            check=True,
+        )
+        subprocess.run(
+            [npm_cmd, "run", "build"],
+            cwd=frontend_dir,
+            timeout=120,
+            check=True,
+        )
+        print(f"[Plugin] Frontend built successfully for {name}.")
+    except subprocess.CalledProcessError as e:
+        print(f"[Plugin] WARNING: Frontend build failed for {name}: {e}")
+    except FileNotFoundError:
+        print(f"[Plugin] WARNING: npm not found, skipping frontend build for {name}.")
 
 
 def load_plugins():
@@ -84,7 +159,7 @@ def load_plugins():
 
         try:
             # 1. Clone / pull
-            plugin_dir = _clone_or_pull(git_url, name)
+            plugin_dir, updated = _clone_or_pull(git_url, name)
 
             # 2. Checkout specific branch if specified
             if branch:
@@ -96,6 +171,9 @@ def load_plugins():
 
             # 3. Install deps
             _install_requirements(plugin_dir, name)
+
+            # 3.5. Build web frontend if present (force rebuild if code updated)
+            _build_frontend(plugin_dir, name, force=updated)
 
             # 4. Import as package using spec_from_file_location
             #    so the plugin's relative imports (from . import xxx) work.

@@ -13,6 +13,8 @@ RUN apt-get update && \
     gpg-agent \
     dirmngr \
     openssh-client \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
 
 # Note: tcping should be installed separately. 
