@@ -253,6 +253,17 @@ if config.WEBHOOK_URL:
     app = web.Application()
     app.router.add_post("/", handle)
     app.router.add_post("/health", health)
+
+    # Let plugins mount their web routes onto the aiohttp app
+    for pname, pmod in plugins.get_loaded_plugins().items():
+        if hasattr(pmod, "setup_web_routes"):
+            try:
+                pmod.setup_web_routes(app)
+            except Exception:
+                import traceback
+                print(f"[Plugin] Failed to setup web routes for: {pname}")
+                traceback.print_exc()
+
     web.run_app(app, host=config.WEBHOOK_LISTEN_HOST, port=config.WEBHOOK_LISTEN_PORT)
 
 else:
