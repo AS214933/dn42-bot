@@ -38,6 +38,38 @@ WEBHOOK_URL = ""
 WEBHOOK_LISTEN_HOST = "127.0.0.1"
 WEBHOOK_LISTEN_PORT = 3443
 
+# External OIDC/OAuth login settings
+# Requires webhook mode (`WEBHOOK_URL`) because the login flow needs an HTTP callback.
+# `base_url` must be the public base URL of this aiohttp service.
+OIDC_LOGIN = {
+    "base_url": "",
+    "callback_path": "/oidc/callback",
+    "pending_ttl": 600,
+    "providers": {
+        "iedon": {
+            "enabled": False,
+            "template": "iedon",
+            "client_id": "your-iedon-client-id",
+            "client_secret": "your-iedon-client-secret",
+            # Optional overrides:
+            # "display_name": "iEdon Auth42",
+            # "scope": "dn42",
+            # "asn_claim": "dn42.asn",
+            # "asn_claim_source": "auto",  # one of: id_token, userinfo, auto
+        },
+        "example": {
+            "enabled": False,
+            "display_name": "Example SSO",
+            "discovery_url": "https://sso.example.com/.well-known/openid-configuration",
+            "client_id": "your-client-id",
+            "client_secret": "your-client-secret",
+            "scope": "openid profile email",
+            "asn_claim": "dn42_asn",
+            "asn_claim_source": "userinfo",  # one of: id_token, userinfo, auto
+        },
+    },
+}
+
 # Optional settings
 LG_DOMAIN = "https://lg.dn42.domain.tld"
 PRIVILEGE_CODE = "123456"

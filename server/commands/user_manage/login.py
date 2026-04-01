@@ -7,9 +7,13 @@ from functools import partial
 
 import config
 import tools
+from auth import oidc
 from base import bot, db, db_privilege
 from commands.tools.whois import whois_raw_query
 from telebot.types import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
+
+
+OIDC_LOGIN_BUTTON_TEXT = "🌐 External OIDC/OAuth 外部登录"
 
 
 def get_email(asn):
@@ -142,6 +146,69 @@ def get_auth(asn):
     except BaseException:
         return set()
 
+
+def persist_login_binding(chat_id, asn, privilege=False):
+    db[chat_id] = asn
+    if privilege:
+        db_privilege.add(chat_id)
+    data_dir = "./data"
+    os.makedirs(data_dir, exist_ok=True)
+    with open(os.path.join(data_dir, "user_db.pkl"), "wb") as f:
+        pickle.dump((db, db_privilege), f)
+
+
+def finish_external_oidc_login(chat_id, asn, provider_name):
+    safe_provider_name = re.sub(r'([_*`\[])', r'\\\1', str(provider_name))
+    persist_login_binding(chat_id, asn)
+    bot.send_message(
+        chat_id,
+        (
+            f"✅ External login via {safe_provider_name} succeeded!\n"
+            f"✅ 已通过 {safe_provider_name} 完成外部登录！\n"
+            "\n"
+            f"Welcome! `{tools.get_asn_mnt_text(asn)}`\n"
+            f"欢迎你！`{tools.get_asn_mnt_text(asn)}`"
+        ),
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+
+
+def _get_oidc_button_text(provider_key, provider):
+    return f"🌐 {provider['display_name']} ({provider_key})"
+
+
+def _is_external_oidc_choice(choice):
+    text = str(choice or "").strip()
+    return text == OIDC_LOGIN_BUTTON_TEXT or "OIDC" in text or "OAuth" in text or "外部" in text
+
+
+def _send_login_asn_prompt(chat_id, invalid_input=False):
+    if oidc.has_enabled_providers():
+        markup = ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.row_width = 1
+        markup.add(KeyboardButton(OIDC_LOGIN_BUTTON_TEXT))
+        if invalid_input:
+            text = (
+                "Input is not a registered DN42 ASN, please try again, or use the button below to continue with external OIDC/OAuth login. Use /cancel to interrupt the operation.\n"
+                "输入不是已注册的 DN42 ASN，请重试，或使用下方按钮继续外部 OIDC/OAuth 登录。使用 /cancel 终止操作。"
+            )
+        else:
+            text = (
+                "Enter your ASN, or use the button below to continue with external OIDC/OAuth login.\n"
+                "请输入你的 ASN，或使用下方按钮继续外部 OIDC/OAuth 登录。"
+            )
+        return bot.send_message(chat_id, text, reply_markup=markup)
+
+    if invalid_input:
+        text = (
+            "Input is not a registered DN42 ASN, please try again. Use /cancel to interrupt the operation.\n"
+            "输入不是已注册的 DN42 ASN，请重试。使用 /cancel 终止操作。"
+        )
+    else:
+        text = "Enter your ASN\n请输入你的 ASN"
+    return bot.send_message(chat_id, text, reply_markup=ReplyKeyboardRemove())
+
 @bot.message_handler(commands=["login"], is_private_chat=True)
 def start_login(message):
     if message.chat.id in db:
@@ -158,15 +225,14 @@ def start_login(message):
     if len(message.text.split()) == 2:
         login_input_asn(message.text.split()[1], message)
         return
-    msg = bot.send_message(
-        message.chat.id,
-        "Enter your ASN\n请输入你的 ASN",
-        reply_markup=ReplyKeyboardRemove(),
-    )
-    bot.register_next_step_handler(msg, partial(login_input_asn, None))
+    msg = _send_login_asn_prompt(message.chat.id)
+    if oidc.has_enabled_providers():
+        bot.register_next_step_handler(msg, partial(login_input_asn, None, allow_external_oidc_prompt=True))
+    else:
+        bot.register_next_step_handler(msg, partial(login_input_asn, None))
 
 
-def login_input_asn(exist_asn, message):
+def login_input_asn(exist_asn, message, allow_external_oidc_prompt=False):
     raw = str(exist_asn) if exist_asn else message.text.strip()
     if raw == "/cancel":
         bot.send_message(
@@ -175,14 +241,20 @@ def login_input_asn(exist_asn, message):
             reply_markup=ReplyKeyboardRemove(),
         )
         return
+    if allow_external_oidc_prompt and _is_external_oidc_choice(raw):
+        login_start_external_oidc(None, message)
+        return
     if asn := tools.extract_asn(raw):
         # 进入验证方式选择
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.row_width = 1
-        markup.add(
+        buttons = [
             KeyboardButton("📧 Email Verification 邮箱验证"),
-            KeyboardButton("🔐 Signature Challenge 签名挑战")
-        )
+            KeyboardButton("🔐 Signature Challenge 签名挑战"),
+        ]
+        if oidc.has_enabled_providers():
+            buttons.append(KeyboardButton(OIDC_LOGIN_BUTTON_TEXT))
+        markup.add(*buttons)
         msg = bot.send_message(
             message.chat.id,
             (
@@ -198,6 +270,9 @@ def login_input_asn(exist_asn, message):
             "Input is not a registered DN42 ASN, please try again.\n输入不是已注册的 DN42 ASN，请重试。",
             reply_markup=ReplyKeyboardRemove(),
         )
+    elif allow_external_oidc_prompt:
+        msg = _send_login_asn_prompt(message.chat.id, invalid_input=True)
+        bot.register_next_step_handler(msg, partial(login_input_asn, None, True))
     else:
         msg = bot.send_message(
             message.chat.id,
@@ -225,6 +300,9 @@ def login_choose_auth_method(asn, message):
     # 邮箱验证
     if "Email" in choice or "邮箱" in choice:
         login_start_email_verification(asn, message)
+    # 外部 OIDC/OAuth 登录
+    elif _is_external_oidc_choice(choice):
+        login_start_external_oidc(asn, message)
     # 签名挑战（自动检测GPG/SSH）
     elif "Signature" in choice or "签名" in choice:
         login_signature_challenge(asn, message)
@@ -238,6 +316,120 @@ def login_choose_auth_method(asn, message):
             reply_markup=ReplyKeyboardRemove(),
         )
         bot.register_next_step_handler(msg, partial(login_choose_auth_method, asn))
+
+
+def login_start_external_oidc(asn, message):
+    runtime_error = oidc.get_runtime_error()
+    if runtime_error:
+        bot.send_message(
+            message.chat.id,
+            runtime_error,
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    providers = oidc.get_available_providers()
+    if not providers:
+        bot.send_message(
+            message.chat.id,
+            (
+                "External OIDC/OAuth login is enabled, but no usable provider is configured. "
+                "Please check `OIDC_LOGIN['providers']`, especially `client_id`, `client_secret`, `asn_claim`, and `asn_claim_source`.\n"
+                "外部 OIDC/OAuth 登录已启用，但没有可用的 provider。"
+                "请检查 `OIDC_LOGIN['providers']`，尤其是 `client_id`、`client_secret`、`asn_claim` 和 `asn_claim_source`。"
+            ),
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    if len(providers) == 1:
+        provider_key = next(iter(providers))
+        login_start_external_oidc_provider(asn, provider_key, message)
+        return
+
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row_width = 1
+    provider_choices = {}
+    for provider_key, provider in providers.items():
+        button_text = _get_oidc_button_text(provider_key, provider)
+        provider_choices[button_text] = provider_key
+        markup.add(KeyboardButton(button_text))
+    msg = bot.send_message(
+        message.chat.id,
+        (
+            "Choose an external OIDC/OAuth provider. Use /cancel to interrupt the operation.\n"
+            "选择一个外部 OIDC/OAuth 提供商。使用 /cancel 终止操作。"
+        ),
+        reply_markup=markup,
+    )
+    bot.register_next_step_handler(msg, partial(login_choose_external_oidc_provider, asn, provider_choices))
+
+
+def login_choose_external_oidc_provider(asn, provider_choices, message):
+    if message.text.strip() == "/cancel":
+        bot.send_message(
+            message.chat.id,
+            "Current operation has been cancelled.\n当前操作已被取消。",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    provider_key = provider_choices.get(message.text.strip())
+    if provider_key is None:
+        markup = ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.row_width = 1
+        for button_text in provider_choices:
+            markup.add(KeyboardButton(button_text))
+        msg = bot.send_message(
+            message.chat.id,
+            (
+                "Invalid provider choice. Please select a configured OIDC/OAuth provider. Use /cancel to interrupt the operation.\n"
+                "无效的 provider 选择。请选择已配置的 OIDC/OAuth 提供商。使用 /cancel 终止操作。"
+            ),
+            reply_markup=markup,
+        )
+        bot.register_next_step_handler(msg, partial(login_choose_external_oidc_provider, asn, provider_choices))
+        return
+
+    login_start_external_oidc_provider(asn, provider_key, message)
+
+
+def login_start_external_oidc_provider(asn, provider_key, message):
+    try:
+        login_request = oidc.start_login(provider_key, message.chat.id, asn)
+    except oidc.OIDCError as exc:
+        bot.send_message(
+            message.chat.id,
+            str(exc),
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    expires_in = login_request["expires_in"]
+    if expires_in % 60 == 0:
+        expiry_text = f"{expires_in // 60} minute(s)"
+        expiry_text_zh = f"{expires_in // 60} 分钟"
+    else:
+        expiry_text = f"{expires_in} second(s)"
+        expiry_text_zh = f"{expires_in} 秒"
+
+    bot.send_message(
+        message.chat.id,
+        (
+            f"Open the following link in your browser to continue logging in with {login_request['display_name']}.\n"
+            f"请在浏览器中打开以下链接，继续使用 {login_request['display_name']} 登录。\n"
+            "\n"
+            f"{login_request['authorization_url']}\n"
+            "\n"
+            "After the browser callback succeeds, this chat will receive the result automatically.\n"
+            "浏览器回调成功后，本聊天会自动收到结果。\n"
+            "\n"
+            f"This link expires in {expiry_text}.\n"
+            f"此链接将在 {expiry_text_zh} 后过期。"
+        ),
+        reply_markup=ReplyKeyboardRemove(),
+        disable_web_page_preview=True,
+    )
 
 
 def login_start_email_verification(asn, message):

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
+import html
 import os
 import pickle
 import re
 import time
 
+from auth import oidc
 import base
 import commands  # noqa: F401
 import config
@@ -16,6 +18,7 @@ import urllib3
 from aiohttp import web
 from apscheduler.schedulers.background import BackgroundScheduler
 from base import bot, db, db_privilege
+from commands.user_manage import login as login_command
 from pytz import utc
 from telebot.handler_backends import BaseMiddleware, CancelUpdate
 from telebot.types import BotCommandScopeAllPrivateChats, ReplyKeyboardRemove
@@ -250,9 +253,40 @@ if config.WEBHOOK_URL:
     async def health(request):
         return web.Response(body=",".join(base.servers.keys()))
 
+    def render_web_page(title, message):
+        safe_title = html.escape(title)
+        safe_message = "<br>".join(html.escape(message).splitlines())
+        body = (
+            "<!DOCTYPE html>"
+            "<html><head><meta charset='utf-8'><title>"
+            f"{safe_title}"
+            "</title><style>body{font-family:sans-serif;max-width:720px;margin:3rem auto;padding:0 1rem;line-height:1.6;}"
+            "code{background:#f5f5f5;padding:0.1rem 0.3rem;border-radius:4px;}</style></head>"
+            f"<body><h1>{safe_title}</h1><p>{safe_message}</p></body></html>"
+        )
+        return web.Response(text=body, content_type="text/html")
+
+    async def oidc_callback(request):
+        callback_result = oidc.finish_login(request.query)
+        if callback_result.get("ok"):
+            login_command.finish_external_oidc_login(
+                callback_result["chat_id"],
+                callback_result["asn"],
+                callback_result["provider_display_name"],
+            )
+        elif callback_result.get("chat_id") and callback_result.get("telegram_message"):
+            bot.send_message(
+                callback_result["chat_id"],
+                callback_result["telegram_message"],
+                reply_markup=ReplyKeyboardRemove(),
+            )
+        return render_web_page(callback_result["page_title"], callback_result["page_message"])
+
     app = web.Application()
     app.router.add_post("/", handle)
     app.router.add_post("/health", health)
+    if oidc.has_enabled_providers():
+        app.router.add_get(oidc.get_callback_path(), oidc_callback)
 
     # Let plugins mount their web routes onto the aiohttp app
     for pname, pmod in plugins.get_loaded_plugins().items():
