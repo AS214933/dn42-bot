@@ -5,6 +5,16 @@ from base import bot
 from commands.tools.whois import whois_raw_query
 
 
+_EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_TELEGRAM_URL_PATTERN = re.compile(r"(?:https?://)?t\.me/([A-Za-z0-9_]{2,})", re.IGNORECASE)
+_TELEGRAM_LABEL_PATTERN = re.compile(r"telegram[^A-Za-z0-9_@]*@?([A-Za-z0-9_]{2,})", re.IGNORECASE)
+_IRC_LABEL_PATTERN = re.compile(
+    r"\birc\b[^A-Za-z0-9]{0,10}(?:\([^)]*\)\s*)?[^A-Za-z0-9]{0,5}[:>-]",
+    re.IGNORECASE,
+)
+_PHONE_KEYS = {"phone", "telephone", "tel", "fax-no", "mobile"}
+
+
 def get_asn_name(asn):
     """
     获取 ASN 的名称 (as-name 字段)
@@ -28,93 +38,143 @@ def get_asn_name(asn):
         return None
 
 
-def get_noc_emails(asn):
+def _parse_kv_line(line):
+    if ":" not in line:
+        return None, None
+    key, value = line.split(":", 1)
+    return key.strip().lower(), value.strip()
+
+
+def _new_contact_info():
+    return {"emails": set(), "telegrams": set(), "ircs": set(), "phones": set()}
+
+
+def _merge_contact_info(target, source):
+    for key in target:
+        target[key].update(source.get(key, set()))
+    return target
+
+
+def _extract_emails_from_value(value):
+    return set(_EMAIL_PATTERN.findall(value))
+
+
+def _extract_telegram_from_value(value):
+    handles = set()
+    handles.update(_TELEGRAM_URL_PATTERN.findall(value))
+    handles.update(_TELEGRAM_LABEL_PATTERN.findall(value))
+    if "telegram" in value.lower():
+        handles.update(
+            re.findall(r"(?<![A-Za-z0-9._%+-])@([A-Za-z0-9_]{2,})", value)
+        )
+    return handles
+
+
+def _extract_irc_from_value(value):
+    results = set()
+    for match in _IRC_LABEL_PATTERN.finditer(value):
+        tail = value[match.end():]
+        for part in re.split(r"[|,;/]", tail):
+            token = part.strip()
+            if not token:
+                continue
+            tokens = token.split()
+            if not tokens:
+                continue
+            candidate = tokens[0]
+            if candidate.startswith("(") and candidate.endswith(")") and len(tokens) > 1:
+                candidate = tokens[1]
+            candidate = candidate.strip("()[]{}<>.,;")
+            if candidate:
+                results.add(candidate)
+    return results
+
+
+def _extract_contact_info_from_text(text):
+    info = _new_contact_info()
+    for line in text.splitlines():
+        key, value = _parse_kv_line(line)
+        if not key or not value:
+            continue
+
+        line_emails = set()
+        line_telegrams = set()
+        line_ircs = set()
+        line_phones = set()
+
+        if key in ("e-mail", "abuse-mailbox", "contact", "remarks", "descr"):
+            line_emails.update(_extract_emails_from_value(value))
+        if key in ("remarks", "descr", "contact"):
+            line_telegrams.update(_extract_telegram_from_value(value))
+            line_ircs.update(_extract_irc_from_value(value))
+        if key in _PHONE_KEYS:
+            line_phones.add(value)
+
+        if key in ("remarks", "descr", "contact") and line_ircs:
+            line_emails.difference_update(line_ircs)
+
+        info["emails"].update(line_emails)
+        info["telegrams"].update(line_telegrams)
+        info["ircs"].update(line_ircs)
+        info["phones"].update(line_phones)
+    return info
+
+
+def _extract_contact_ids_from_text(text):
+    contacts = set()
+    for line in text.splitlines():
+        key, value = _parse_kv_line(line)
+        if key in ("admin-c", "tech-c", "org") and value:
+            contacts.add(value)
+    return contacts
+
+
+def _get_contact_text(contact_id):
+    return whois_raw_query(contact_id, timeout=3)
+
+
+def _recursive_collect_contact_info(contact_id, visited=None, depth=0):
+    if visited is None:
+        visited = set()
+    if contact_id in visited or depth > 5:
+        return _new_contact_info()
+    visited.add(contact_id)
+
+    contact_text = _get_contact_text(contact_id)
+    if not contact_text:
+        return _new_contact_info()
+
+    info = _extract_contact_info_from_text(contact_text)
+    for sub_contact in _extract_contact_ids_from_text(contact_text):
+        _merge_contact_info(info, _recursive_collect_contact_info(sub_contact, visited, depth + 1))
+    return info
+
+
+def get_noc_contacts(asn):
     """
-    获取 ASN 关联的所有 email 地址
+    获取 ASN 关联的 NOC 信息。
     
-    支持递归查找：如果 admin-c/tech-c 指向 role/organisation，会继续查找其 admin-c/tech-c
-    同时支持 e-mail、abuse-mailbox、contact 等字段
+    支持递归查找 admin-c/tech-c/org，解析 e-mail/abuse-mailbox/contact/remarks/descr/phone。
     
     Args:
         asn: AS号
         
     Returns:
-        set: email 地址集合
+        dict: emails/telegrams/ircs/phones 集合（自动去重）
     """
-    def extract_emails_from_text(text):
-        """从文本中提取所有 email 地址"""
-        emails = set()
-        for line in text.splitlines():
-            if line.startswith("e-mail:") or line.startswith("abuse-mailbox:"):
-                email = line.split(":", 1)[1].strip()
-                if re.fullmatch(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", email):
-                    emails.add(email)
-            elif line.startswith("contact:"):
-                # contact 字段也可能包含 email
-                email = line.split(":", 1)[1].strip()
-                if re.fullmatch(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", email):
-                    emails.add(email)
-        return emails
-    
-    def extract_contacts_from_text(text):
-        """从文本中提取 admin-c 和 tech-c"""
-        contacts = set()
-        for line in text.splitlines():
-            if line.startswith("admin-c:") or line.startswith("tech-c:"):
-                contact = line.split(":", 1)[1].strip()
-                if contact:
-                    contacts.add(contact)
-        return contacts
-    
-    def get_contact_text(contact_id):
-        """获取 contact 的 whois 信息"""
-        return whois_raw_query(contact_id, timeout=3)
-    
-    def recursive_get_emails(contact_id, visited=None, depth=0):
-        """递归获取 contact 及其子 contact 的所有 email"""
-        if visited is None:
-            visited = set()
-        
-        # 防止无限递归和循环引用
-        if contact_id in visited or depth > 5:
-            return set()
-        visited.add(contact_id)
-        
-        contact_text = get_contact_text(contact_id)
-        if not contact_text:
-            return set()
-        
-        emails = extract_emails_from_text(contact_text)
-        
-        # 继续查找子 contact 的 email（即使当前有 email 也继续查找）
-        sub_contacts = extract_contacts_from_text(contact_text)
-        for sub_contact in sub_contacts:
-            emails.update(recursive_get_emails(sub_contact, visited, depth + 1))
-        
-        return emails
-    
     try:
-        # 优先本地 registry，兜底远程 whois
         whois_text = whois_raw_query(str(asn), timeout=5)
-        
         if not whois_text:
-            return set()
-        
-        # 收集 admin-c 和 tech-c
-        contacts = extract_contacts_from_text(whois_text)
-        
-        if not contacts:
-            return set()
-        
-        # 递归获取所有 email
-        emails = set()
+            return _new_contact_info()
+
+        info = _extract_contact_info_from_text(whois_text)
+        contacts = _extract_contact_ids_from_text(whois_text)
         visited = set()
         for contact in contacts:
-            emails.update(recursive_get_emails(contact, visited))
-        
-        return emails
+            _merge_contact_info(info, _recursive_collect_contact_info(contact, visited))
+        return info
     except BaseException:
-        return set()
+        return _new_contact_info()
 
 
 def _lookup_single_asn(raw_asn):
@@ -137,19 +197,28 @@ def _lookup_single_asn(raw_asn):
     if not asn_name:
         asn_name = "Unknown"
 
-    # 获取 email 列表
-    emails = get_noc_emails(asn)
+    contacts = get_noc_contacts(asn)
 
-    if emails:
-        email_text = "\n".join(f"Email: {email}" for email in sorted(emails))
-    else:
-        email_text = "Email: Not found / 未找到"
+    def format_lines(label, values, formatter=None, show_when_empty=False):
+        if not values:
+            return [f"{label}: Not found / 未找到"] if show_when_empty else []
+        if formatter is None:
+            formatter = lambda value: value
+        return [f"{label}: {formatter(value)}" for value in sorted(values)]
 
-    return (
-        f"ASN: AS{asn}\n"
-        f"ASN Name: {asn_name}\n"
-        f"{email_text}"
+    lines = [f"ASN: AS{asn}", f"ASN Name: {asn_name}"]
+    lines.extend(format_lines("Email", contacts["emails"], show_when_empty=True))
+    lines.extend(
+        format_lines(
+            "Telegram",
+            contacts["telegrams"],
+            lambda value: f"@{value}" if not value.startswith("@") else value,
+        )
     )
+    lines.extend(format_lines("IRC", contacts["ircs"]))
+    lines.extend(format_lines("Phone", contacts["phones"]))
+
+    return "\n".join(lines)
 
 
 @bot.message_handler(commands=["findnoc"])

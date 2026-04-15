@@ -182,7 +182,7 @@ cmd_list = {
     "path": ("AS-Path of IP / Domain", True),
     "whois": ("Whois", True),
     "dig": ("Dig domain", True),
-    "findnoc": ("Find NOC Emails", True),
+    "findnoc": ("Find NOC Contacts", True),
     "login": ("Login to verify your ASN 登录以验证你的 ASN", False),
     "logout": ("Logout current logged ASN 退出当前登录的 ASN", False),
     "whoami": ("Get current login user 获取当前登录用户", False),
