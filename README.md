@@ -52,7 +52,7 @@ PLUGINS = [
  - 使用特权码登录时，请按照输入 `/login <ASN>` - 选择 `📧 Email Verification 邮箱验证` - 输入特权码的步骤登录。
  - 由于 Telegram API 的限制，需要设置 Webhook 才能正确响应当用户手动发送 `GPG 公钥` 时的请求，否则由于消息接收顺序的问题，可能会导致登录失败。
  - 启用外部 OIDC / OAuth 登录时，必须启用 Webhook 并为 `OIDC_LOGIN["base_url"]` 配置一个可被浏览器和身份提供商访问的公开地址。
- - `iedon` 模板会预置 discovery 地址、默认显示名，以及与 discovery 文档一致的默认 scope `openid profile email dn42`；**不会**帮你猜测 ASN claim 名称，`asn_claim` 需要你自己填写。
+ - `iedon` 模板会预置 discovery 地址、默认显示名，以及与 discovery 文档一致的默认 scope `dn42`。
 
 以下为原 README 内容：
 
