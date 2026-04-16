@@ -11,6 +11,7 @@ from expiringdict import ExpiringDict
 
 
 IEDON_DISCOVERY_URL = "https://auth.iedon.net/.well-known/openid-configuration"
+KIOUBIT_DISCOVERY_URL = "https://dn42.g-load.eu/.well-known/openid-configuration"
 
 PROVIDER_TEMPLATES = {
     "iedon": {
@@ -20,6 +21,13 @@ PROVIDER_TEMPLATES = {
         "asn_claim": "dn42.asn",
         "asn_claim_source": "auto",
     },
+    "kioubit": {
+        "display_name": "Kioubit.dn42",
+        "discovery_url": KIOUBIT_DISCOVERY_URL,
+        "scope": "dn42",
+        "asn_claim": "dn42.asn",
+        "asn_claim_source": "auto",
+    }
 }
 
 _DISCOVERY_CACHE = ExpiringDict(max_len=32, max_age_seconds=3600)
