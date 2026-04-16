@@ -1,4 +1,5 @@
 import threading
+from urllib.parse import urlencode
 
 import requests
 import config
@@ -83,7 +84,7 @@ def get_callback_path():
     return callback_path
 
 
-def get_callback_url():
+def _get_base_url():
     base_url = str(_get_oidc_config().get("base_url") or "").strip()
     if not base_url:
         raise OIDCConfigError(
@@ -99,7 +100,31 @@ def get_callback_url():
                 "`OIDC_LOGIN['base_url']` 必须以 `http://` 或 `https://` 开头。",
             )
         )
-    return base_url.rstrip("/") + get_callback_path()
+    return base_url.rstrip("/")
+
+
+def get_callback_url():
+    return _get_base_url() + get_callback_path()
+
+
+def get_webapp_start_path():
+    callback_path = get_callback_path()
+    if callback_path.endswith("/callback"):
+        return callback_path[: -len("/callback")] + "/start"
+    base_path = callback_path.rsplit("/", 1)[0] or ""
+    return base_path + "/start"
+
+
+def get_webapp_start_url(state):
+    state = str(state or "").strip()
+    if not state:
+        raise OIDCError(
+            _bilingual(
+                "Missing OIDC state parameter.",
+                "缺少 OIDC state 参数。",
+            )
+        )
+    return _get_base_url() + get_webapp_start_path() + "?" + urlencode({"state": state})
 
 
 def has_enabled_providers():
@@ -297,6 +322,18 @@ def _pop_pending_login(state):
         return pending_logins.pop(state, None)
 
 
+def get_pending_authorization_url(state):
+    state = str(state or "").strip()
+    if not state:
+        return None
+    pending_logins = _get_pending_logins()
+    with _PENDING_LOCK:
+        pending_login = pending_logins.get(state)
+        if not isinstance(pending_login, dict):
+            return None
+        return pending_login.get("authorization_url")
+
+
 def start_login(provider_key, chat_id, asn):
     runtime_error = get_runtime_error()
     if runtime_error:
@@ -321,12 +358,14 @@ def start_login(provider_key, chat_id, asn):
             "provider_key": provider_key,
             "nonce": nonce,
             "code_verifier": code_verifier,
+            "authorization_url": authorization_url,
         },
     )
     return {
         "authorization_url": authorization_url,
         "display_name": provider["display_name"],
         "expires_in": get_pending_ttl(),
+        "state": state,
     }
 
 

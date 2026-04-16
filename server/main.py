@@ -266,6 +266,26 @@ if config.WEBHOOK_URL:
         )
         return web.Response(text=body, content_type="text/html")
 
+    async def oidc_webapp_start(request):
+        state = str(request.query.get("state") or "").strip()
+        if not state:
+            message = "The request is missing `state`.\n请求缺少 `state`。"
+            return render_web_page("Login failed / 登录失败", message)
+
+        authorization_url = oidc.get_pending_authorization_url(state)
+        if not authorization_url:
+            message = (
+                "The login state is invalid or has expired. Please restart /login.\n"
+                "登录 state 无效或已过期，请重新执行 /login。"
+            )
+            return render_web_page("Login failed / 登录失败", message)
+
+        if not (authorization_url.startswith("http://") or authorization_url.startswith("https://")):
+            message = "The authorization URL is invalid.\n授权 URL 无效。"
+            return render_web_page("Login failed / 登录失败", message)
+
+        raise web.HTTPFound(authorization_url)
+
     async def oidc_callback(request):
         callback_result = oidc.finish_login(request.query)
         if callback_result.get("ok"):
@@ -286,6 +306,7 @@ if config.WEBHOOK_URL:
     app.router.add_post("/", handle)
     app.router.add_post("/health", health)
     if oidc.has_enabled_providers():
+        app.router.add_get(oidc.get_webapp_start_path(), oidc_webapp_start)
         app.router.add_get(oidc.get_callback_path(), oidc_callback)
 
     # Let plugins mount their web routes onto the aiohttp app

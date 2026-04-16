@@ -10,7 +10,14 @@ import tools
 from auth import oidc
 from base import bot, db, db_privilege
 from commands.tools.whois import whois_raw_query
-from telebot.types import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telebot.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    WebAppInfo,
+)
 
 
 OIDC_LOGIN_BUTTON_TEXT = "🌐 External OIDC/OAuth 外部登录"
@@ -413,11 +420,21 @@ def login_start_external_oidc_provider(asn, provider_key, message):
         expiry_text = f"{expires_in} second(s)"
         expiry_text_zh = f"{expires_in} 秒"
 
+    webapp_url = oidc.get_webapp_start_url(login_request["state"])
+    markup = InlineKeyboardMarkup()
+    markup.row_width = 1
+    markup.add(
+        InlineKeyboardButton(
+            "📲 Open in Telegram Web App / 在 Telegram 内打开",
+            web_app=WebAppInfo(url=webapp_url),
+        )
+    )
+
     bot.send_message(
         message.chat.id,
         (
-            f"Open the following link in your browser to continue logging in with {login_request['display_name']}.\n"
-            f"请在浏览器中打开以下链接，继续使用 {login_request['display_name']} 登录。\n"
+            f"Use the button below to open the login page in Telegram Web App, or open the link in your browser to continue logging in with {login_request['display_name']}.\n"
+            f"请使用下方按钮在 Telegram Web App 内打开登录页面，或在浏览器中打开链接继续使用 {login_request['display_name']} 登录。\n"
             "\n"
             f"{login_request['authorization_url']}\n"
             "\n"
@@ -427,7 +444,7 @@ def login_start_external_oidc_provider(asn, provider_key, message):
             f"This link expires in {expiry_text}.\n"
             f"此链接将在 {expiry_text_zh} 后过期。"
         ),
-        reply_markup=ReplyKeyboardRemove(),
+        reply_markup=markup,
         disable_web_page_preview=True,
     )
 
