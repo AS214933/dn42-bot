@@ -8,6 +8,7 @@ from commands.tools.whois import whois_raw_query
 _EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _TELEGRAM_URL_PATTERN = re.compile(r"(?:https?://)?t\.me/([A-Za-z0-9_]{2,})", re.IGNORECASE)
 _TELEGRAM_LABEL_PATTERN = re.compile(r"telegram[^A-Za-z0-9_@]*@?([A-Za-z0-9_]{2,})", re.IGNORECASE)
+_DISCORD_LABEL_PATTERN = re.compile(r"discord[^A-Za-z0-9]{0,10}[:>-]\s*([A-Za-z0-9_.-]{2,})", re.IGNORECASE)
 _IRC_LABEL_PATTERN = re.compile(
     r"\birc\b[^A-Za-z0-9]{0,10}(?:\([^)]*\)\s*)?[^A-Za-z0-9]{0,5}[:>-]",
     re.IGNORECASE,
@@ -46,7 +47,7 @@ def _parse_kv_line(line):
 
 
 def _new_contact_info():
-    return {"emails": set(), "telegrams": set(), "ircs": set(), "phones": set()}
+    return {"emails": set(), "telegrams": set(), "discords": set(), "ircs": set(), "phones": set()}
 
 
 def _merge_contact_info(target, source):
@@ -90,6 +91,15 @@ def _extract_irc_from_value(value):
     return results
 
 
+def _extract_discord_from_value(value):
+    results = set()
+    for match in _DISCORD_LABEL_PATTERN.finditer(value):
+        candidate = match.group(1).strip("()[]{}<>.,;")
+        if candidate:
+            results.add(candidate)
+    return results
+
+
 def _extract_contact_info_from_text(text):
     info = _new_contact_info()
     for line in text.splitlines():
@@ -99,6 +109,7 @@ def _extract_contact_info_from_text(text):
 
         line_emails = set()
         line_telegrams = set()
+        line_discords = set()
         line_ircs = set()
         line_phones = set()
 
@@ -106,6 +117,7 @@ def _extract_contact_info_from_text(text):
             line_emails.update(_extract_emails_from_value(value))
         if key in ("remarks", "descr", "contact"):
             line_telegrams.update(_extract_telegram_from_value(value))
+            line_discords.update(_extract_discord_from_value(value))
             line_ircs.update(_extract_irc_from_value(value))
         if key in _PHONE_KEYS:
             line_phones.add(value)
@@ -115,6 +127,7 @@ def _extract_contact_info_from_text(text):
 
         info["emails"].update(line_emails)
         info["telegrams"].update(line_telegrams)
+        info["discords"].update(line_discords)
         info["ircs"].update(line_ircs)
         info["phones"].update(line_phones)
     return info
@@ -160,7 +173,7 @@ def get_noc_contacts(asn):
         asn: AS号
         
     Returns:
-        dict: emails/telegrams/ircs/phones 集合（自动去重）
+        dict: emails/telegrams/discords/ircs/phones 集合（自动去重）
     """
     try:
         whois_text = whois_raw_query(str(asn), timeout=5)
@@ -215,6 +228,7 @@ def _lookup_single_asn(raw_asn):
             lambda value: f"@{value}" if not value.startswith("@") else value,
         )
     )
+    lines.extend(format_lines("Discord", contacts["discords"]))
     lines.extend(format_lines("IRC", contacts["ircs"]))
     lines.extend(format_lines("Phone", contacts["phones"]))
 
