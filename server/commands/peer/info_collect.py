@@ -20,6 +20,8 @@ from telebot.types import (
 
 def pre_region(message, peer_info):
     peered = set(tools.get_info(db[message.chat.id]).keys())
+    need_admin_servers = tools.get_need_admin_servers()
+    is_privileged = message.chat.id in db_privilege
     pre_peer_info = tools.get_from_agent("pre_peer", None)
     could_peer = []
     msg = ""
@@ -31,6 +33,9 @@ def pre_region(message, peer_info):
     except StopIteration:
         existed_peers = 0
     for k in config.SERVERS:
+        if (not is_privileged) and k in need_admin_servers:
+            # Admin-only nodes are hidden from non-privileged users.
+            continue
         msg += f"- `{config.SERVERS[k]}`\n"
         try:
             v = pre_peer_info[k]
@@ -89,7 +94,7 @@ def pre_region(message, peer_info):
                 and (data["requirement"] == 0 or existed_peers >= data["requirement"])
             ):
                 pass
-            elif message.chat.id in db_privilege:
+            elif is_privileged:
                 use_privilege = True
             else:
                 have_unpeerable = True
@@ -877,6 +882,56 @@ def post_confirm(message, peer_info):
             reply_markup=ReplyKeyboardRemove(),
         )
         return
+
+    # Permission enforcement for admin-only nodes.
+    need_admin_servers = tools.get_need_admin_servers()
+    is_privileged = message.chat.id in db_privilege
+    new_region = peer_info.get("Region")
+    if not is_privileged and new_region in need_admin_servers:
+        if progress_type == "peer":
+            bot.send_message(
+                message.chat.id,
+                (
+                    "This node only allows admin to create new peers. Please contact the administrator.\n"
+                    "该节点仅允许管理员新增 Peer，请联系管理员。"
+                    f"\n\nContact: {config.CONTACT}"
+                ),
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+        if progress_type == "modify" and old_region and old_region != new_region:
+            bot.send_message(
+                message.chat.id,
+                (
+                    "Migration to an admin-only node is not allowed for normal users.\n"
+                    "普通用户不允许迁移到管理员节点。"
+                    f"\n\nContact: {config.CONTACT}"
+                ),
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return
+
+    if (
+        progress_type == "modify"
+        and (not is_privileged)
+        and old_region
+        and old_region != new_region
+        and old_region in need_admin_servers
+    ):
+        bot.send_message(
+            message.chat.id,
+            (
+                "Migration from an admin-only node is not allowed for normal users.\n"
+                "普通用户不允许从管理员节点迁移。"
+                f"\n\nContact: {config.CONTACT}"
+            ),
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
     bot.send_chat_action(chat_id=message.chat.id, action="typing")
     try:
         if peer_info["Region"] in config.HOSTS:

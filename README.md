@@ -15,6 +15,7 @@
  - 修改了 `login` 的相关逻辑以支持 Org 类的 ASN 登录
  - 新增了部分参数
  - 新增了对 WireGuard PreshareKey 的支持
+ - 新增了特权节点
  - **新增插件系统** — 支持通过 Git 仓库加载外部插件
 
 ## 新增配置
@@ -24,6 +25,8 @@
 | DIG_ADDRESS         | The address of /dig                                                                            |
 | OIDC_LOGIN          | (Optional) External OIDC/OAuth login config, including base URL, callback path and providers  |
 | PLUGINS             | (Optional) Plugin list — `[{"git": "<repo_url>", "name": "<name>"}]`                          |
+| NEED_ADMIN_SERVER   | (Optional) Servers that require admin (privileged) permission to create new peers.             |
+| TOOLS_HIDDEN_SERVERS | (Optional) Nodes listed here will be completely hidden from the UI and cannot be selected.   |
 
 ## TODO
  - [ ] 支持节点审批

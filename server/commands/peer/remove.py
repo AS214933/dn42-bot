@@ -39,10 +39,14 @@ def remove_peer(message):
         reply_markup=ReplyKeyboardRemove(),
     )
 
-    if offline_servers := set(config.SERVERS.values()) - set(base.servers.values()):
+    offline_keys = [k for k in config.SERVERS.keys() if k not in base.servers]
+    if message.chat.id not in db_privilege:
+        need_admin_servers = tools.get_need_admin_servers()
+        offline_keys = [k for k in offline_keys if k not in need_admin_servers]
+    if offline_keys:
         msg = "The following servers are currently offline, please try again later:\n以下服务器目前处于离线状态，如有需要请稍后再试："
-        for i in offline_servers:
-            msg += f"\n`{i}`"
+        for k in offline_keys:
+            msg += f"\n`{config.SERVERS[k]}`"
         bot.send_message(
             message.chat.id,
             msg,
@@ -110,14 +114,29 @@ def remove_peer_choose(removable, chosen, message):
     peer_info = recreate_peer_info(message, chosen)
     last_info = get_diff_text(peer_info, peer_info)
     code = tools.gen_random_code(32)
+
+    need_admin_servers = tools.get_need_admin_servers()
+    is_privileged = message.chat.id in db_privilege
+    if (not is_privileged) and chosen in need_admin_servers:
+        recreate_hint = (
+            f"Note: Creating a new peer on this node requires admin permission. If you need to re-create it later, please contact {config.CONTACT}.\n"
+            f"注意：该节点新增 Peer 需要管理员权限，如需重新建立请联系 {config.CONTACT}。\n"
+        )
+    else:
+        recreate_hint = (
+            "You can always re-create it using /peer.\n"
+            "你可以随时使用 /peer 重新建立。\n"
+        )
+
     bot.send_message(
         message.chat.id,
         (
-            f"Peer information with `{base.servers[chosen]}` will be deleted (including BGP Sessions and WireGuard tunnels), and you can always re-create it using /peer.\n"
-            f"将要删除与 `{base.servers[chosen]}` 的 Peer 信息（包括 BGP Session 和 WireGuard 隧道），你可以随时使用 /peer 重新建立。\n"
+            f"Peer information with `{base.servers[chosen]}` will be deleted (including BGP Sessions and WireGuard tunnels).\n"
+            f"将要删除与 `{base.servers[chosen]}` 的 Peer 信息（包括 BGP Session 和 WireGuard 隧道）。\n"
             f"```LastInfo\n{last_info}```"
             "If you want to modify Peer information, you can use the /modify command instead of deleting and recreating.\n"
             "如果你想要修改 Peer 信息，可以使用 /modify 命令，而无需删除再重建。"
+            f"\n\n{recreate_hint}"
         ),
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardRemove(),
@@ -179,8 +198,17 @@ def remove_peer_confirm(code, region, last_info, message):
             "Peer information has been deleted.\n"
             "Peer 信息已删除。\n"
             "\n"
-            "You can always re-create it using /peer.\n"
-            "你可以随时使用 /peer 重新建立。"
+            + (
+                (
+                    f"Creating a new peer on this node requires admin permission. Please contact {config.CONTACT} if you need to re-create it.\n"
+                    f"该节点新增 Peer 需要管理员权限，如需重新建立请联系 {config.CONTACT}。"
+                )
+                if (message.chat.id not in db_privilege and region in tools.get_need_admin_servers())
+                else (
+                    "You can always re-create it using /peer.\n"
+                    "你可以随时使用 /peer 重新建立。"
+                )
+            )
         ),
         reply_markup=ReplyKeyboardRemove(),
     )

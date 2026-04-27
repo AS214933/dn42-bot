@@ -184,10 +184,14 @@ def init(message, peer_info):
 
 
 def pre_node_choose(message, peer_info):
-    if offline_servers := set(config.SERVERS.values()) - set(base.servers.values()):
+    offline_keys = [k for k in config.SERVERS.keys() if k not in base.servers]
+    if message.chat.id not in db_privilege:
+        need_admin_servers = tools.get_need_admin_servers()
+        offline_keys = [k for k in offline_keys if k not in need_admin_servers]
+    if offline_keys:
         msg = "The following servers are currently offline, please try again later:\n以下服务器目前处于离线状态，如有需要请稍后再试："
-        for i in offline_servers:
-            msg += f"\n`{i}`"
+        for k in offline_keys:
+            msg += f"\n`{config.SERVERS[k]}`"
         bot.send_message(
             message.chat.id,
             msg,
@@ -356,6 +360,16 @@ def post_action_choose(message, peer_info):
         )
         return "post_action_choose", peer_info, msg
     if message.text.strip() == "Region":
+        if message.chat.id not in db_privilege and peer_info.get("Region") in tools.get_need_admin_servers():
+            bot.send_message(
+                message.chat.id,
+                (
+                    "This peer is on an admin-only node. Normal users can modify/delete it, but cannot migrate it.\n"
+                    "该 Peer 位于管理员节点：普通用户可以修改/删除，但不能迁移。"
+                ),
+                reply_markup=ReplyKeyboardRemove(),
+            )
+            return "pre_action_choose", peer_info, message
         return "pre_region", peer_info, message, "pre_session_type"
     elif message.text.strip() == "Session Type":
         return "pre_session_type", peer_info, message, "pre_clearnet"

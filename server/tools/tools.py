@@ -480,3 +480,34 @@ def extract_asn(text, *, privilege=False):
     except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError, ValueError, UnicodeDecodeError):
         # Whois command or registry lookup failed
         return original_asn
+
+
+def get_need_admin_servers():
+    """Return a set of server keys that require admin approval to add peers."""
+
+    raw = getattr(config, "NEED_ADMIN_SERVER", None)
+    if not raw:
+        return set()
+    if isinstance(raw, (list, tuple, set)):
+        items = raw
+    else:
+        items = [raw]
+    normalized = set()
+    for item in items:
+        try:
+            key = str(item).strip()
+        except BaseException:
+            continue
+        if key:
+            normalized.add(key)
+    return normalized
+
+
+def is_need_admin_server(server_key):
+    if not server_key:
+        return False
+    try:
+        key = str(server_key).strip()
+    except BaseException:
+        return False
+    return key in get_need_admin_servers()

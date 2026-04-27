@@ -58,17 +58,25 @@ def init(message, peer_info):
     if message.chat.id not in db:
         tools.gen_login_message(message)
         return
-    could_peer = set(base.servers.keys()) - set(tools.get_info(db[message.chat.id]).keys())
+    existed_peers = set(tools.get_info(db[message.chat.id]).keys())
+    could_peer = set(base.servers.keys()) - existed_peers
+    if message.chat.id not in db_privilege:
+        could_peer -= tools.get_need_admin_servers()
     if not could_peer:
+        # Non-privileged users should not be hinted about admin-only nodes.
+        visible_nodes = set(base.servers.keys())
+        if message.chat.id not in db_privilege:
+            visible_nodes -= tools.get_need_admin_servers()
+        if not visible_nodes:
+            header = "No available nodes at the moment.\n当前暂无可用节点。\n"
+        else:
+            header = "You already peer with all available nodes.\n你已经和当前可用节点 Peer 了。\n"
         bot.send_message(
             message.chat.id,
-            (
-                "You already peer with all my nodes.\n"
-                "你已经和我的所有节点 Peer 了。\n"
-                "\n"
-                "Use /info for more information.\n"
-                "使用 /info 查看更多信息。"
-            ),
+            header
+            + "\n"
+            + "Use /info for more information.\n"
+            + "使用 /info 查看更多信息。",
             reply_markup=ReplyKeyboardRemove(),
         )
         return

@@ -4,7 +4,7 @@ import base
 import config
 import requests
 import tools
-from base import bot, db
+from base import bot, db, db_privilege
 from telebot.types import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 
 
@@ -38,10 +38,14 @@ def restart_peer(message):
         reply_markup=ReplyKeyboardRemove(),
     )
 
-    if offline_servers := set(config.SERVERS.values()) - set(base.servers.values()):
+    offline_keys = [k for k in config.SERVERS.keys() if k not in base.servers]
+    if message.chat.id not in db_privilege:
+        need_admin_servers = tools.get_need_admin_servers()
+        offline_keys = [k for k in offline_keys if k not in need_admin_servers]
+    if offline_keys:
         msg = "The following servers are currently offline, please try again later:\n以下服务器目前处于离线状态，如有需要请稍后再试："
-        for i in offline_servers:
-            msg += f"\n`{i}`"
+        for k in offline_keys:
+            msg += f"\n`{config.SERVERS[k]}`"
         bot.send_message(
             message.chat.id,
             msg,

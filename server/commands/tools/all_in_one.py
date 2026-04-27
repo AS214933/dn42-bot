@@ -10,9 +10,30 @@ from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 cache = ExpiringDict(max_len=500, max_age_seconds=259200)
 
 
+def _normalize_node_key(key):
+    return str(key or "").strip().lower()
+
+
+def _get_visible_tool_nodes():
+    """Nodes available for information commands (/ping, /trace, etc.).
+
+    By default uses all nodes from config.SERVERS, except those listed in
+    config.TOOLS_HIDDEN_SERVERS.
+    """
+
+    raw_hidden = getattr(config, "TOOLS_HIDDEN_SERVERS", None) or []
+    if not isinstance(raw_hidden, (list, tuple, set)):
+        raw_hidden = [raw_hidden]
+    hidden = {_normalize_node_key(i) for i in raw_hidden if _normalize_node_key(i)}
+    return [k for k in config.SERVERS.keys() if _normalize_node_key(k) not in hidden]
+
+
 def gen_generaltest_markup(chat, data_id, node, available_nodes):
     markup = InlineKeyboardMarkup()
+    visible_nodes = set(_get_visible_tool_nodes())
     for n in available_nodes:
+        if n not in visible_nodes:
+            continue
         selected = "✅ " if n == node else ""
         markup.row(InlineKeyboardButton(f"{selected}{config.SERVERS[n]}", callback_data=f"generaltest_{data_id}_{n}"))
     if chat.id in db_privilege:
@@ -182,14 +203,21 @@ def generaltest(message):
         parse_mode="Markdown",
     )
     bot.send_chat_action(chat_id=message.chat.id, action="typing", timeout=20 if command == "trace" else 10)
-    try:
-        specific_server = [i for i in config.SERVERS if i in server_list]
-        if not specific_server:
-            specific_server = [i for i in config.SERVERS if any(i.startswith(k) for k in server_list)]
-        if not specific_server:
-            raise RuntimeError()
-    except BaseException:
-        specific_server = list(config.SERVERS.keys())
+    visible_nodes = _get_visible_tool_nodes()
+    if not visible_nodes:
+        bot.reply_to(
+            message,
+            "No available nodes are configured for tool commands.\n未配置任何可用的工具节点。",
+            reply_markup=tools.gen_peer_me_markup(message),
+        )
+        return
+
+    # Filter nodes by user selection (exact match first, then prefix match).
+    specific_server = [i for i in visible_nodes if _normalize_node_key(i) in server_list]
+    if not specific_server and server_list:
+        specific_server = [i for i in visible_nodes if any(_normalize_node_key(i).startswith(k) for k in server_list)]
+    if not specific_server:
+        specific_server = list(visible_nodes)
     available_server = [i for i in specific_server if i in base.servers]
     raw = tools.get_from_agent(command, command_data, available_server, timeout=timeout)
     data = {}

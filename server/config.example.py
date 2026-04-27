@@ -33,6 +33,22 @@ HOSTS = {
     "hkg": "hkg.domain.tld",
 }
 
+# Servers that require admin (privileged) permission to create new peers.
+#
+# - Non-privileged users will NOT see these nodes in the /peer node list by default.
+# - Users who already have peer info on these nodes can still /modify and /remove,
+#   but cannot create new peers or migrate between nodes.
+NEED_ADMIN_SERVER = [
+    # "las",
+]
+
+# Tool nodes visibility control for information commands
+# (e.g. /ping, /trace, /route, /tcping, /path).
+# Nodes listed here will be completely hidden from the UI and cannot be selected.
+TOOLS_HIDDEN_SERVERS = [
+    # "trf",
+]
+
 # Webhook settings
 WEBHOOK_URL = ""
 WEBHOOK_LISTEN_HOST = "127.0.0.1"
