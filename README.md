@@ -1,5 +1,7 @@
 # Bingxin DN42 Bot
 
+*请注意：`908eeec050def0ce33f5848aab726558202a1601` 之后至今的提交暂未测试，几乎存在错误。*
+
 **这是 [Potat0000/dn42-bot](https://github.com/Potat0000/dn42-bot) 的 Fork 版本**，根据我自己的需求添加了部分功能。
 
 欢迎在 Telegram 中使用 [@baka_lg_bot](t.me/baka_lg_bot) 和我进行 Peer！
