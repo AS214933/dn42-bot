@@ -49,6 +49,13 @@ TOOLS_HIDDEN_SERVERS = [
     # "trf",
 ]
 
+# Servers whose WireGuard endpoint should not be revealed to users.
+# For these servers, the /info command will display "[ASK_FOR_ENDPOINT]:port"
+# instead of the actual hostname, so users must ask the admin for the endpoint.
+HIDDEN_ENDPOINT_SERVERS = [
+    # "trf",
+]
+
 # Webhook settings
 WEBHOOK_URL = ""
 WEBHOOK_LISTEN_HOST = "127.0.0.1"

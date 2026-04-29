@@ -199,10 +199,15 @@ def get_info_text(chatid, asn, node):
         peer_info["v4"],
         psk=peer_info.get("psk"),
     )
+    hidden_endpoint = getattr(config, "HIDDEN_ENDPOINT_SERVERS", None) or []
+    if node in hidden_endpoint:
+        my_endpoint = f"[ASK_FOR_ENDPOINT]:{peer_info['port']}"
+    else:
+        my_endpoint = f"{node}.{config.ENDPOINT}:{peer_info['port']}"
     detail_text += "Information on my side:\n"
     detail_text += basic_info(
         config.DN42_ASN,
-        f"{node}.{config.ENDPOINT}:{peer_info['port']}",
+        my_endpoint,
         peer_info["my_pubkey"],
         peer_info["my_v6"] if peer_info["v6"] else "",
         peer_info["my_v4"] if peer_info["v4"] else "",
