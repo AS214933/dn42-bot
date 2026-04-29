@@ -207,6 +207,7 @@ def get_info_text(chatid, asn, node):
         peer_info["my_v6"] if peer_info["v6"] else "",
         peer_info["my_v4"] if peer_info["v4"] else "",
     )
+    detail_text += "MTU:\n" f"    {peer_info.get('mtu', 1420)}\n"
 
     if peer_info["wg_last_handshake"] == 0:
         detail_text += "WireGuard Status:\n" "    Latest handshake:\n" "        Never\n" "    Transfer:\n"

@@ -83,6 +83,7 @@ def recreate_peer_info(message, chosen):
         "PublicKey": raw_info["pubkey"],
         "PresharedKey": raw_info.get("psk"),
         "Port": raw_info["port"],
+        "MTU": raw_info.get("mtu", 1420),
         "Contact": raw_info["desc"],
         "Net_Support": raw_info["net_support"],
         "Provide-LinkLocal": raw_info["lla"],
@@ -146,6 +147,8 @@ def get_diff_text(old_peer_info, peer_info):
         diff_text += f"    PresharedKey: {old_psk_display}\n"
         diff_text += "  ->\n"
         diff_text += f"    PresharedKey: {new_psk_display}\n"
+
+    diff_text += f"    MTU:         {peer_info.get('MTU', 1420)}\n"
 
     diff_text += "Contact:\n"
     diff_print("Contact")
@@ -264,7 +267,7 @@ def pre_first_action_choose(message, peer_info):
     markup.row(KeyboardButton("Region"), KeyboardButton("Clearnet Endpoint"))
     markup.row(KeyboardButton("Session Type"), KeyboardButton("WireGuard PublicKey"))
     markup.row(KeyboardButton("DN42 IP"), KeyboardButton("WireGuard PresharedKey"))
-    markup.row(KeyboardButton("Contact"))
+    markup.row(KeyboardButton("Contact"), KeyboardButton("MTU"))
     markup.row(KeyboardButton("Finish modification"), KeyboardButton("Abort modification"))
     msg = bot.send_message(
         message.chat.id,
@@ -293,6 +296,9 @@ def pre_first_action_choose(message, peer_info):
             "- `Contact`\n"
             "  Change contact\n"
             "  修改联系方式\n"
+            "- `MTU`\n"
+            "  Change MTU of WireGuard tunnel\n"
+            "  修改 WireGuard 隧道的 MTU\n"
             "\n"
             "- `Finish modification`\n"
             "  Finish modification and submit\n"
@@ -312,7 +318,7 @@ def pre_action_choose(message, peer_info):
     markup.row(KeyboardButton("Region"), KeyboardButton("Clearnet Endpoint"))
     markup.row(KeyboardButton("Session Type"), KeyboardButton("WireGuard PublicKey"))
     markup.row(KeyboardButton("DN42 IP"), KeyboardButton("WireGuard PresharedKey"))
-    markup.row(KeyboardButton("Contact"))
+    markup.row(KeyboardButton("Contact"), KeyboardButton("MTU"))
     markup.row(KeyboardButton("Finish modification"), KeyboardButton("Abort modification"))
 
     diff_text = get_diff_text(peer_info["backup"], peer_info)
@@ -341,6 +347,7 @@ def post_action_choose(message, peer_info):
         "WireGuard PublicKey",
         "WireGuard PresharedKey",
         "Contact",
+        "MTU",
         "Finish modification",
         "Abort modification",
     ]:
@@ -348,7 +355,7 @@ def post_action_choose(message, peer_info):
         markup.row(KeyboardButton("Region"), KeyboardButton("Clearnet Endpoint"))
         markup.row(KeyboardButton("Session Type"), KeyboardButton("WireGuard PublicKey"))
         markup.row(KeyboardButton("DN42 IP"), KeyboardButton("WireGuard PresharedKey"))
-        markup.row(KeyboardButton("Contact"))
+        markup.row(KeyboardButton("Contact"), KeyboardButton("MTU"))
         markup.row(KeyboardButton("Finish modification"), KeyboardButton("Abort modification"))
         msg = bot.send_message(
             message.chat.id,
@@ -386,6 +393,8 @@ def post_action_choose(message, peer_info):
         return "pre_psk", peer_info, message, "pre_contact"
     elif message.text.strip() == "Contact":
         return "pre_contact", peer_info, message, "pre_confirm"
+    elif message.text.strip() == "MTU":
+        return "pre_mtu", peer_info, message, "pre_contact"
     elif message.text.strip() == "Finish modification":
         return "pre_confirm", peer_info, message
     elif message.text.strip() == "Abort modification":

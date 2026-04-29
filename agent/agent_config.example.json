@@ -21,5 +21,6 @@
     "BIRD_TABLE_4": "master4",
     "BIRD_TABLE_6": "master6",
     "VNSTAT_AUTO_ADD": true,
-    "VNSTAT_AUTO_REMOVE": false
+    "VNSTAT_AUTO_REMOVE": false,
+    "DEFAULT_MTU": 1420
 }

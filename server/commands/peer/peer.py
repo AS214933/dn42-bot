@@ -23,6 +23,7 @@ def start_peer(message):
         "PublicKey": None,
         "PresharedKey": None,
         "Port": None,
+        "MTU": None,
         "Contact": None,
     }
     step_manage("init", peer_info, message)
@@ -116,6 +117,7 @@ def pre_confirm(message, peer_info):
         f"    Endpoint:    {peer_info['Clearnet']}\n"
         f"    PublicKey:   {peer_info['PublicKey']}\n"
         f"    PresharedKey: {'Set' if peer_info['PresharedKey'] else 'Not set'}\n"
+        f"    MTU:         {peer_info.get('MTU', 1420)}\n"
         "Contact:\n"
         f"    {peer_info['Contact']}\n"
     )

@@ -865,6 +865,63 @@ def post_contact(message, peer_info):
         )
         return "post_contact", peer_info, msg
     peer_info["Contact"] = message.text.strip()
+    return "pre_mtu", peer_info, message
+
+
+def pre_mtu(message, peer_info):
+    current_mtu = peer_info.get("MTU") or 1420
+    markup = ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row_width = 2
+    markup.add(KeyboardButton("1420"), KeyboardButton("1400"))
+    markup.add(KeyboardButton("1380"))
+    msg = bot.send_message(
+        message.chat.id,
+        (
+            "Input MTU for WireGuard tunnel (default: 1420)\n"
+            "请输入 WireGuard 隧道的 MTU（默认值：1420）\n"
+            "\n"
+            f"Current value / 当前值: `{current_mtu}`\n"
+            "\n"
+            "You can input a custom value or select from the common values below.\n"
+            "你可以输入自定义值，或从下方常见值中选择。"
+        ),
+        parse_mode="Markdown",
+        reply_markup=markup,
+    )
+    return "post_mtu", peer_info, msg
+
+
+def post_mtu(message, peer_info):
+    text = message.text.strip()
+    if text.lower() == "skip":
+        peer_info["MTU"] = 1420
+        return "pre_confirm", peer_info, message
+    try:
+        mtu = int(text)
+        if not (1280 <= mtu <= 1500):
+            raise ValueError
+    except ValueError:
+        current_mtu = peer_info.get("MTU") or 1420
+        markup = ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.row_width = 2
+        markup.add(KeyboardButton("1420"), KeyboardButton("1400"))
+        markup.add(KeyboardButton("1380"))
+        msg = bot.send_message(
+            message.chat.id,
+            (
+                "Invalid MTU value. MTU must be between 1280 and 1500.\n"
+                "无效的 MTU 值。MTU 必须在 1280 到 1500 之间。\n"
+                "\n"
+                f"Current value / 当前值: `{current_mtu}`\n"
+                "\n"
+                "Please try again. Use /cancel to interrupt the operation.\n"
+                "请重试。使用 /cancel 终止操作。"
+            ),
+            parse_mode="Markdown",
+            reply_markup=markup,
+        )
+        return "post_mtu", peer_info, msg
+    peer_info["MTU"] = mtu
     return "pre_confirm", peer_info, message
 
 

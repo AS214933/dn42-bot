@@ -27,6 +27,7 @@ try:
     BIRD_TABLE_6 = raw_config["BIRD_TABLE_6"]
     VNSTAT_AUTO_ADD = raw_config["VNSTAT_AUTO_ADD"]
     VNSTAT_AUTO_REMOVE = raw_config["VNSTAT_AUTO_REMOVE"] if VNSTAT_AUTO_ADD else False
+    DEFAULT_MTU = raw_config.get("DEFAULT_MTU", 1420)
     SENTRY_DSN = raw_config["SENTRY_DSN"]
 except BaseException:
     print("Failed to load config file. Exiting.")
