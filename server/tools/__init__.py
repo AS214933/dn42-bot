@@ -2,6 +2,7 @@ import tools.get_flaps as get_flaps
 import tools.get_map as get_map
 import tools.servers_check as servers_check
 import tools.tools as tools
+import tools.topology as topology
 import tools.update_as_route_table as update_as_route_table
 import tools.update_china_ip as update_china_ip
 
@@ -21,6 +22,7 @@ get_need_admin_servers = tools.get_need_admin_servers
 is_need_admin_server = tools.is_need_admin_server
 servers_check = servers_check.servers_check
 split_long_msg = tools.split_long_msg
+get_topology_graph = topology.get_topology_graph
 test_ip_domain = tools.test_ip_domain
 update_as_route_table = update_as_route_table.update_as_route_table
 update_china_ip = update_china_ip.update_china_ip

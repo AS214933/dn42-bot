@@ -57,3 +57,12 @@ services:
       - /var/run/bird/bird.ctl:/var/run/bird/bird.ctl # 修改为你的 bird.ctl 路径
       - ./agent_config.json:/app/agent_config.json:ro
 ```
+
+`agent_config.json` 文件请参考 `agent/agent_config.example.json` 进行修改。
+
+### IGP 拓扑图
+
+`/topology` 命令通过查询各 Agent 节点的 BIRD Babel 或 OSPF 邻居信息，生成内部 IGP 网络拓扑图。
+
+- Agent 配置中 `IGP_PROTOCOL` 可设为 `"babel"` 或 `"ospf"`，留空则自动检测（优先 Babel）。
+- Server 镜像已内置 `graphviz`（`dot` 命令），无需额外安装。

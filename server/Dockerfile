@@ -7,6 +7,7 @@ RUN apt-get update && \
     traceroute \
     dnsutils \
     whois \
+    graphviz \
     build-essential \
     git \
     gpg \

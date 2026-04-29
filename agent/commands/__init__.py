@@ -2,3 +2,4 @@
 
 import commands.peer
 import commands.statistics
+import commands.topology
