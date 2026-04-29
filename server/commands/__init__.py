@@ -12,6 +12,7 @@ import commands.statistics.flaps
 import commands.statistics.peer_list
 import commands.statistics.rank
 import commands.statistics.stats
+import commands.tools.agent_config
 import commands.tools.all_in_one
 import commands.tools.dig
 import commands.tools.findnoc
