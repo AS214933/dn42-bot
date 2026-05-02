@@ -8,7 +8,6 @@ from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 # Fields safe to edit at runtime (subset that admins should manage)
 EDITABLE_KEYS = [
-    "IGP_PROTOCOL",
     "DEFAULT_MTU",
     "OPEN",
     "MAX_PEERS",
@@ -24,7 +23,6 @@ EDITABLE_KEYS = [
 
 # Human-readable descriptions for editable keys
 KEY_DESCRIPTIONS = {
-    "IGP_PROTOCOL": "IGP Protocol (babel/ospf/empty=auto)",
     "DEFAULT_MTU": "Default MTU",
     "OPEN": "Accept new peers",
     "MAX_PEERS": "Max peers (0=unlimited)",

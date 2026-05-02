@@ -5,8 +5,6 @@
 Docker Compose 示例：
 
 ```yaml
-version: '3.8'
-
 services:
   server:
     image: ghcr.io/bingxin666/dn42-bot/server:latest
@@ -34,8 +32,6 @@ services:
 Docker Compose 示例：
 
 ```yaml
-version: "3.8"
-
 services:
   agent:
     image: ghcr.io/bingxin666/dn42-bot/agent:latest
@@ -62,7 +58,5 @@ services:
 
 ### IGP 拓扑图
 
-`/topology` 命令通过查询各 Agent 节点的 BIRD Babel 或 OSPF 邻居信息，生成内部 IGP 网络拓扑图。
-
-- Agent 配置中 `IGP_PROTOCOL` 可设为 `"babel"` 或 `"ospf"`，留空则自动检测（优先 Babel）。
+`/topology` 命令通过查询各 Agent 节点的 BIRD Babel 邻居/接口信息，生成自家 PoP（节点）之间的内部 IGP mesh 拓扑图。
 - Server 镜像已内置 `graphviz`（`dot` 命令），无需额外安装。

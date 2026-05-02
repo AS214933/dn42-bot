@@ -39,16 +39,16 @@ def show_topology(message):
 
     png_path = tools.get_topology_graph()
     if not png_path:
-        bot.edit_message_text(
-            (
-                "Failed to generate topology diagram.\n生成拓扑图失败。\n\n"
-                "Possible reasons:\n可能原因：\n"
-                "- No Babel configured / no Babel neighbors on agents\n- Agent 节点未配置 Babel / 没有 Babel 邻居\n"
-                "- Graphviz rendering error\n- Graphviz 渲染错误"
-            ),
-            chat_id=message.chat.id,
-            message_id=msg.message_id,
+        text = (
+            "Failed to generate topology diagram.\n生成拓扑图失败。\n\n"
+            "Possible reasons:\n可能原因：\n"
+            "- No Babel configured / no Babel neighbors on agents\n- Agent 节点未配置 Babel / 没有 Babel 邻居\n"
+            "- Graphviz rendering error\n- Graphviz 渲染错误"
         )
+        try:
+            bot.edit_message_text(text, chat_id=message.chat.id, message_id=msg.message_id)
+        except Exception:
+            bot.send_message(message.chat.id, text, reply_markup=ReplyKeyboardRemove())
         return
 
     try:
@@ -58,13 +58,18 @@ def show_topology(message):
                 photo=photo,
                 caption="IGP Network Topology / IGP 网络拓扑",
             )
-        bot.delete_message(message.chat.id, msg.message_id)
     except Exception:
-        bot.edit_message_text(
-            "Failed to send topology image.\n发送拓扑图失败。",
-            chat_id=message.chat.id,
-            message_id=msg.message_id,
-        )
+        text = "Failed to send topology image.\n发送拓扑图失败。"
+        try:
+            bot.edit_message_text(text, chat_id=message.chat.id, message_id=msg.message_id)
+        except Exception:
+            bot.send_message(message.chat.id, text, reply_markup=ReplyKeyboardRemove())
+    else:
+        # Best-effort cleanup of the temporary progress message.
+        try:
+            bot.delete_message(message.chat.id, msg.message_id)
+        except Exception:
+            pass
     finally:
         # Remove the whole temp directory (DOT + PNG).
         try:

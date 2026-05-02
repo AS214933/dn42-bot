@@ -28,7 +28,6 @@ try:
     VNSTAT_AUTO_ADD = raw_config["VNSTAT_AUTO_ADD"]
     VNSTAT_AUTO_REMOVE = raw_config["VNSTAT_AUTO_REMOVE"] if VNSTAT_AUTO_ADD else False
     DEFAULT_MTU = raw_config.get("DEFAULT_MTU", 1420)
-    IGP_PROTOCOL = raw_config.get("IGP_PROTOCOL", "") or None
     SENTRY_DSN = raw_config["SENTRY_DSN"]
 except BaseException:
     print("Failed to load config file. Exiting.")
