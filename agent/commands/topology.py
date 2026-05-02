@@ -88,8 +88,18 @@ async def get_igp_topology(request):
         return web.Response(status=403)
 
     # Babel-only: build PoP mesh strictly from `birdc show babel ...` outputs.
-    iface_out = simple_run(f"birdc -s {base.BIRD_CTL_PATH} show babel interfaces")
-    neigh_out = simple_run(f"birdc -s {base.BIRD_CTL_PATH} show babel neighbors")
+    errors = []
+    try:
+        iface_out = simple_run(f"birdc -s {base.BIRD_CTL_PATH} show babel interfaces")
+    except Exception as e:
+        iface_out = ""
+        errors.append(f"show babel interfaces failed: {type(e).__name__}: {e}")
+
+    try:
+        neigh_out = simple_run(f"birdc -s {base.BIRD_CTL_PATH} show babel neighbors")
+    except Exception as e:
+        neigh_out = ""
+        errors.append(f"show babel neighbors failed: {type(e).__name__}: {e}")
 
     interfaces = _parse_babel_interfaces(iface_out) if iface_out else []
     neighbors = _parse_babel_neighbors(neigh_out) if neigh_out else []
@@ -98,4 +108,5 @@ async def get_igp_topology(request):
         "protocol": "babel",
         "interfaces": interfaces,
         "neighbors": neighbors,
+        "errors": errors,
     })

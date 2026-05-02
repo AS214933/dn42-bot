@@ -1,11 +1,14 @@
 import os
 import json
+import logging
 import shutil
 import subprocess
 import tempfile
 from ipaddress import ip_address
 
 import base
+
+logger = logging.getLogger(__name__)
 
 
 def get_topology_graph(servers=None):
@@ -27,6 +30,12 @@ def get_topology_graph(servers=None):
 
     api_result = get_from_agent("igp_topology", "", server=servers, timeout=10, retry=2)
 
+    non_200 = {region: status for region, (text, status) in api_result.items() if status != 200}
+    if non_200:
+        logger.info("topology: non-200 agent responses: %s", non_200)
+        if any(code == 403 for code in non_200.values()):
+            logger.info("topology: got 403; check server API_TOKEN vs agent SECRET")
+
     # Parse all regions' babel data
     regions = {}
     for region, (text, status) in api_result.items():
@@ -46,7 +55,11 @@ def get_topology_graph(servers=None):
 
         regions[region] = {"interfaces": interfaces, "neighbors": neighbors}
 
+        if data.get("errors"):
+            logger.info("topology: agent %s reported errors: %s", region, data.get("errors"))
+
     if not regions:
+        logger.info("topology: no usable babel data from agents (200+protocol=babel required)")
         return None
 
     # Build address -> region mapping from each region's babel interface next-hop addresses.
@@ -72,10 +85,20 @@ def get_topology_graph(servers=None):
                 else:
                     addr_to_region[addr] = region
 
+    ambiguous_addrs = sum(1 for v in addr_to_region.values() if v is None)
+    logger.info(
+        "topology: parsed regions=%d, iface_addrs=%d (ambiguous=%d)",
+        len(regions),
+        len(addr_to_region),
+        ambiguous_addrs,
+    )
+
     # Infer PoP<->PoP edges by matching neighbor address to remote region's interface address.
     edges = {}
+    neighbor_rows = 0
     for region, info in regions.items():
         for n in info["neighbors"]:
+            neighbor_rows += 1
             if not isinstance(n, dict):
                 continue
             raw_addr = n.get("address")
@@ -105,8 +128,14 @@ def get_topology_graph(servers=None):
                 edges[key] = cost
 
     if not edges:
+        logger.info(
+            "topology: no edges inferred (neighbor_rows=%d). "
+            "Likely neighbor address does not match any remote next_hop_v6/v4 or addresses are ambiguous.",
+            neighbor_rows,
+        )
         return None
 
+    logger.info("topology: inferred edges=%d", len(edges))
     return _render_graph(servers, edges)
 
 
@@ -175,6 +204,11 @@ def _render_graph(servers, edges):
             timeout=30,
         )
         if result.returncode != 0:
+            try:
+                stderr = (result.stderr or b"").decode("utf-8", errors="replace")
+            except Exception:
+                stderr = "<decode failed>"
+            logger.info("topology: graphviz dot failed rc=%s stderr=%s", result.returncode, stderr[:500])
             shutil.rmtree(tmpdir, ignore_errors=True)
             return None
 
