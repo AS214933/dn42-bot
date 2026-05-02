@@ -1,7 +1,5 @@
 # Bingxin DN42 Bot
 
-*请注意：`908eeec050def0ce33f5848aab726558202a1601` 之后至今的提交暂未测试，几乎存在错误。*
-
 **这是 [Potat0000/dn42-bot](https://github.com/Potat0000/dn42-bot) 的 Fork 版本**，根据我自己的需求添加了部分功能。
 
 欢迎在 Telegram 中使用 [@baka_lg_bot](t.me/baka_lg_bot) 和我进行 Peer！
@@ -12,12 +10,14 @@
  - 支持了通过外部 OIDC / OAuth 进行 ASN 登录
  - 支持了非 DN42 ASN 的自助 Peer
  - 支持了 `findnoc` 指令
+ - 支持了对 MTU 的设置
  - 修改了部分 whois 请求为本地拉取仓库进行遍历
  - 修改了默认数据存放位置
  - 修改了 `login` 的相关逻辑以支持 Org 类的 ASN 登录
  - 新增了部分参数
  - 新增了对 WireGuard PreshareKey 的支持
  - 新增了特权节点
+ - 新增了 IGP 拓扑图功能
  - **新增插件系统** — 支持通过 Git 仓库加载外部插件
 
 ## 新增配置
@@ -29,6 +29,12 @@
 | PLUGINS             | (Optional) Plugin list — `[{"git": "<repo_url>", "name": "<name>"}]`                          |
 | NEED_ADMIN_SERVER   | (Optional) Servers that require admin (privileged) permission to create new peers.             |
 | TOOLS_HIDDEN_SERVERS | (Optional) Nodes listed here will be completely hidden from the UI and cannot be selected.   |
+| HIDDEN_ENDPOINT_SERVERS | (Optional) Servers whose WireGuard endpoint should not be revealed to users.              |
+
+`agent/agent_config.json`：
+| Config Key                 | Description                                                  |
+| -------------------------- | ------------------------------------------------------------ |
+| DEFAULT_MTU                | (Optional) Default MTU for this agent's peers (if not specified by peer) |
 
 ## TODO
  - [ ] 支持节点审批
