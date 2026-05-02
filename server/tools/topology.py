@@ -183,21 +183,22 @@ def _render_graph(servers, edges):
         parts = display.split("|")
         short_names[key] = parts[0].strip() if parts else key
 
-    # Find max cost for line thickness scaling
-    max_cost = max(edges.values()) if edges else 1
+    # Find max cost among reachable edges for line thickness scaling
+    reachable_costs = [c for c in edges.values() if c < 65535]
+    max_cost = max(reachable_costs) if reachable_costs else 1
 
     # Generate DOT
     lines = [
         "graph topology {",
-        '    graph [overlap=false, splines=true, bgcolor="#FAFBFC", pad="0.8", nodesep="0.6", ranksep="0.8"];',
+        '    graph [overlap=false, splines="ortho", bgcolor="#FAFBFC", pad="0.8", nodesep="1.0", ranksep="1.2"];',
         '    node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=12, margin="0.15,0.08"];',
-        '    edge [fontname="Helvetica", fontsize=9, color="#6B7280", fontcolor="#374151"];',
+        '    edge [fontname="Helvetica", fontsize=9, color="#9CA3AF"];',
         "",
         '    labelloc="t"; label="IGP Network Topology"; fontsize=14; fontname="Helvetica Bold";',
         "",
     ]
 
-    # PoP nodes — gradient from warm (low-latency) to cool
+    # PoP nodes — blue gradient
     colors = ["#2563EB", "#3B82F6", "#60A5FA", "#93C5FD"]
     for i, (key, display) in enumerate(servers.items()):
         label = short_names.get(key, key)
@@ -206,10 +207,12 @@ def _render_graph(servers, edges):
 
     lines.append("")
 
-    # Edges — thicker = lower cost (better link)
+    # Edges — skip unreachable (65535), no labels, thickness encodes quality
     for (a, b), cost in sorted(edges.items()):
+        if cost >= 65535:
+            continue
         penwidth = max(1.0, 4.0 * (1.0 - cost / (max_cost + 1)) + 1.0)
-        lines.append(f'    "{a}" -- "{b}" [label="{cost}", penwidth={penwidth:.1f}];')
+        lines.append(f'    "{a}" -- "{b}" [penwidth={penwidth:.1f}];')
 
     lines.append("}")
     dot_content = "\n".join(lines)
