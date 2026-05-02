@@ -3,12 +3,14 @@ import shutil
 
 import base
 import tools
-from base import bot
+from base import bot, db_privilege
 from telebot.types import ReplyKeyboardRemove
 
 
-@bot.message_handler(commands=["topology"], is_private_chat=True)
+@bot.message_handler(commands=["topology"])
 def show_topology(message):
+    if message.chat.type != "private" and message.from_user.id not in db_privilege:
+        return
     if not base.servers:
         bot.send_message(
             message.chat.id,
