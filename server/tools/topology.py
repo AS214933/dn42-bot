@@ -189,32 +189,27 @@ def _render_graph(servers, edges):
     # Generate DOT
     lines = [
         "graph topology {",
-        '    graph [overlap=false, splines=true, bgcolor="white", pad="0.5"];',
-        '    node [shape=box, style="rounded,filled", fillcolor="#B0C4DE", fontname="Helvetica", fontsize=11];',
-        '    edge [fontname="Helvetica", fontsize=9];',
+        '    graph [overlap=false, splines=true, bgcolor="#FAFBFC", pad="0.8", nodesep="0.6", ranksep="0.8"];',
+        '    node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=12, margin="0.15,0.08"];',
+        '    edge [fontname="Helvetica", fontsize=9, color="#6B7280", fontcolor="#374151"];',
+        "",
+        '    labelloc="t"; label="IGP Network Topology"; fontsize=14; fontname="Helvetica Bold";',
         "",
     ]
 
-    # PoP nodes
-    for key, display in servers.items():
+    # PoP nodes — gradient from warm (low-latency) to cool
+    colors = ["#2563EB", "#3B82F6", "#60A5FA", "#93C5FD"]
+    for i, (key, display) in enumerate(servers.items()):
         label = short_names.get(key, key)
-        lines.append(f'    "{key}" [label="{label}", fillcolor="#4682B4", fontcolor="white"];')
+        color = colors[i % len(colors)]
+        lines.append(f'    "{key}" [label="{label}", fillcolor="{color}", fontcolor="white", penwidth="0"];')
 
     lines.append("")
 
-    # Edges
+    # Edges — thicker = lower cost (better link)
     for (a, b), cost in sorted(edges.items()):
-        penwidth = max(1.0, 3.0 * (1.0 - cost / (max_cost + 1)) + 1.0)
+        penwidth = max(1.0, 4.0 * (1.0 - cost / (max_cost + 1)) + 1.0)
         lines.append(f'    "{a}" -- "{b}" [label="{cost}", penwidth={penwidth:.1f}];')
-
-    # Legend
-    lines.append("")
-    lines.append('    subgraph cluster_legend {')
-    lines.append('        label="Legend"; fontsize=10; style=dashed; color="#CCCCCC";')
-    lines.append('        legend_pop [label="PoP", fillcolor="#4682B4", fontcolor="white"];')
-    lines.append('        legend_link [label="Babel neighbor metric", shape=plaintext];')
-    lines.append('        legend_pop -- legend_link [label="metric", penwidth=2.0];')
-    lines.append("    }")
 
     lines.append("}")
     dot_content = "\n".join(lines)
