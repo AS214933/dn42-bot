@@ -43,7 +43,7 @@ def show_topology(message):
             (
                 "Failed to generate topology diagram.\n生成拓扑图失败。\n\n"
                 "Possible reasons:\n可能原因：\n"
-                "- No IGP (Babel/OSPF) configured on agents\n- Agent 节点未配置 IGP (Babel/OSPF)\n"
+                "- No Babel configured / no Babel neighbors on agents\n- Agent 节点未配置 Babel / 没有 Babel 邻居\n"
                 "- Graphviz rendering error\n- Graphviz 渲染错误"
             ),
             chat_id=message.chat.id,
@@ -66,8 +66,8 @@ def show_topology(message):
             message_id=msg.message_id,
         )
     finally:
+        # Remove the whole temp directory (DOT + PNG).
         try:
-            os.remove(png_path)
-            os.rmdir(os.path.dirname(png_path))
-        except OSError:
+            shutil.rmtree(os.path.dirname(png_path), ignore_errors=True)
+        except Exception:
             pass

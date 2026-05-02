@@ -5,7 +5,7 @@ from tools import simple_run
 
 from aiohttp import web
 
-AGENT_VERSION = 27
+AGENT_VERSION = 28
 
 try:
     with open("agent_config.json", "r") as f:

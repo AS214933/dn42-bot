@@ -1,14 +1,18 @@
 import os
+import json
 import shutil
 import subprocess
 import tempfile
+from ipaddress import ip_address
 
 import base
-import config
 
 
 def get_topology_graph(servers=None):
-    """Collect IGP topology from all agents and render a graphviz PNG.
+    """Collect Babel topology from all agents and render a graphviz PNG.
+
+    Nodes are PoPs (regions like us0/sg0/...), edges are inferred purely from
+    `birdc show babel neighbors/interfaces` outputs returned by agents.
 
     Args:
         servers: dict of {region_key: display_name}. Defaults to base.servers.
@@ -23,33 +27,91 @@ def get_topology_graph(servers=None):
 
     api_result = get_from_agent("igp_topology", "", server=servers, timeout=10, retry=2)
 
-    my_asn = getattr(config, "DN42_ASN", 0)
-    all_neighbors = []
-
+    # Parse all regions' babel data
+    regions = {}
     for region, (text, status) in api_result.items():
         if status != 200:
             continue
         try:
-            data = text if isinstance(text, dict) else __import__("json").loads(text)
+            data = text if isinstance(text, dict) else json.loads(text)
         except Exception:
             continue
-        if not isinstance(data, dict):
+        if not isinstance(data, dict) or data.get("protocol") != "babel":
             continue
-        for n in data.get("neighbors", []):
-            all_neighbors.append({
-                "server": region,
-                "peer_asn": n.get("peer_asn"),
-                "cost": n.get("cost", 65535),
-            })
 
-    if not all_neighbors:
+        interfaces = data.get("interfaces") or []
+        neighbors = data.get("neighbors") or []
+        if not isinstance(interfaces, list) or not isinstance(neighbors, list):
+            continue
+
+        regions[region] = {"interfaces": interfaces, "neighbors": neighbors}
+
+    if not regions:
         return None
 
-    return _render_graph(servers, my_asn, all_neighbors)
+    # Build address -> region mapping from each region's babel interface next-hop addresses.
+    addr_to_region = {}
+    for region, info in regions.items():
+        for iface in info["interfaces"]:
+            if not isinstance(iface, dict):
+                continue
+            for k in ("next_hop_v6", "next_hop_v4"):
+                raw = iface.get(k)
+                if not raw:
+                    continue
+                try:
+                    addr_obj = ip_address(raw)
+                except ValueError:
+                    continue
+                if addr_obj.is_unspecified:
+                    continue
+                addr = str(addr_obj)
+                if addr in addr_to_region and addr_to_region[addr] != region:
+                    # Ambiguous address across regions; ignore during matching.
+                    addr_to_region[addr] = None
+                else:
+                    addr_to_region[addr] = region
+
+    # Infer PoP<->PoP edges by matching neighbor address to remote region's interface address.
+    edges = {}
+    for region, info in regions.items():
+        for n in info["neighbors"]:
+            if not isinstance(n, dict):
+                continue
+            raw_addr = n.get("address")
+            if not raw_addr:
+                continue
+            try:
+                neighbor_obj = ip_address(raw_addr)
+            except ValueError:
+                continue
+            if neighbor_obj.is_unspecified:
+                continue
+
+            neighbor_addr = str(neighbor_obj)
+
+            remote = addr_to_region.get(neighbor_addr)
+            if not remote or remote == region:
+                continue
+
+            try:
+                cost = int(n.get("cost", 65535))
+            except Exception:
+                cost = 65535
+
+            a, b = sorted((region, remote))
+            key = (a, b)
+            if key not in edges or cost < edges[key]:
+                edges[key] = cost
+
+    if not edges:
+        return None
+
+    return _render_graph(servers, edges)
 
 
-def _render_graph(servers, my_asn, all_neighbors):
-    """Render a network topology graph using graphviz DOT language.
+def _render_graph(servers, edges):
+    """Render a PoP mesh graph using graphviz DOT language.
 
     Returns path to generated PNG, or None if graphviz is not available.
     """
@@ -57,27 +119,11 @@ def _render_graph(servers, my_asn, all_neighbors):
     if not dot_path:
         return None
 
-    # Collect all unique ASNs
-    all_asns = set()
-    for n in all_neighbors:
-        all_asns.add(my_asn)
-        if n["peer_asn"]:
-            all_asns.add(n["peer_asn"])
-
     # Short labels for our servers
     short_names = {}
     for key, display in servers.items():
         parts = display.split("|")
         short_names[key] = parts[0].strip() if parts else key
-
-    # Build edges (deduplicate by sorted pair)
-    edges = {}
-    for n in all_neighbors:
-        if not n["peer_asn"]:
-            continue
-        edge_key = tuple(sorted([my_asn, n["peer_asn"]]))
-        if edge_key not in edges or n["cost"] < edges[edge_key]:
-            edges[edge_key] = n["cost"]
 
     # Find max cost for line thickness scaling
     max_cost = max(edges.values()) if edges else 1
@@ -91,51 +137,25 @@ def _render_graph(servers, my_asn, all_neighbors):
         "",
     ]
 
-    # Our server nodes (highlighted)
+    # PoP nodes
     for key, display in servers.items():
-        label = f"{short_names[key]}\\nAS{my_asn}"
-        lines.append(f'    "{my_asn}_{key}" [label="{label}", fillcolor="#4682B4", fontcolor="white"];')
-
-    # Peer nodes
-    peer_asns = set()
-    for n in all_neighbors:
-        if n["peer_asn"] and n["peer_asn"] != my_asn:
-            peer_asns.add(n["peer_asn"])
-    for asn in sorted(peer_asns):
-        lines.append(f'    "{asn}" [label="AS{asn}", fillcolor="#D3D3D3"];')
+        label = short_names.get(key, key)
+        lines.append(f'    "{key}" [label="{label}", fillcolor="#4682B4", fontcolor="white"];')
 
     lines.append("")
 
     # Edges
     for (a, b), cost in sorted(edges.items()):
         penwidth = max(1.0, 3.0 * (1.0 - cost / (max_cost + 1)) + 1.0)
-        if a == my_asn:
-            # Find which server key connects to this peer
-            server_key = None
-            for n in all_neighbors:
-                if n["peer_asn"] == b:
-                    server_key = n["server"]
-                    break
-            node_a = f"{my_asn}_{server_key}" if server_key else str(my_asn)
-            lines.append(f'    "{node_a}" -- "{b}" [label="{cost}", penwidth={penwidth:.1f}];')
-        elif b == my_asn:
-            server_key = None
-            for n in all_neighbors:
-                if n["peer_asn"] == a:
-                    server_key = n["server"]
-                    break
-            node_b = f"{my_asn}_{server_key}" if server_key else str(my_asn)
-            lines.append(f'    "{a}" -- "{node_b}" [label="{cost}", penwidth={penwidth:.1f}];')
-        else:
-            lines.append(f'    "{a}" -- "{b}" [label="{cost}", penwidth={penwidth:.1f}, style=dashed, color="#999999"];')
+        lines.append(f'    "{a}" -- "{b}" [label="{cost}", penwidth={penwidth:.1f}];')
 
     # Legend
     lines.append("")
     lines.append('    subgraph cluster_legend {')
     lines.append('        label="Legend"; fontsize=10; style=dashed; color="#CCCCCC";')
-    lines.append('        legend_internal [label="Our Server", fillcolor="#4682B4", fontcolor="white"];')
-    lines.append('        legend_peer [label="Peer Node", fillcolor="#D3D3D3"];')
-    lines.append('        legend_internal -- legend_peer [label="IGP cost", penwidth=2.0];')
+    lines.append('        legend_pop [label="PoP", fillcolor="#4682B4", fontcolor="white"];')
+    lines.append('        legend_link [label="Babel neighbor metric", shape=plaintext];')
+    lines.append('        legend_pop -- legend_link [label="metric", penwidth=2.0];')
     lines.append("    }")
 
     lines.append("}")
@@ -155,11 +175,14 @@ def _render_graph(servers, my_asn, all_neighbors):
             timeout=30,
         )
         if result.returncode != 0:
+            shutil.rmtree(tmpdir, ignore_errors=True)
             return None
 
         if not os.path.isfile(png_file):
+            shutil.rmtree(tmpdir, ignore_errors=True)
             return None
 
         return png_file
     except Exception:
+        shutil.rmtree(tmpdir, ignore_errors=True)
         return None
