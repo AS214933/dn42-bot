@@ -11,6 +11,22 @@ import base
 logger = logging.getLogger(__name__)
 
 
+def _emit_topology_debug(lines):
+    for line in lines:
+        try:
+            logger.warning("%s", line)
+        except Exception:
+            # Last resort: avoid breaking command flow due to logging issues
+            pass
+
+        # Also print to stdout to make sure it shows up in Docker logs even
+        # when logging is configured to suppress warnings.
+        try:
+            print(line, flush=True)
+        except Exception:
+            pass
+
+
 def get_topology_graph(servers=None):
     """Collect Babel topology from all agents and render a graphviz PNG.
 
@@ -30,11 +46,13 @@ def get_topology_graph(servers=None):
 
     api_result = get_from_agent("igp_topology", "", server=servers, timeout=10, retry=2)
 
+    debug = []
+
     non_200 = {region: status for region, (text, status) in api_result.items() if status != 200}
     if non_200:
-        logger.info("topology: non-200 agent responses: %s", non_200)
+        debug.append(f"topology: non-200 agent responses: {non_200}")
         if any(code == 403 for code in non_200.values()):
-            logger.info("topology: got 403; check server API_TOKEN vs agent SECRET")
+            debug.append("topology: got 403; check server API_TOKEN vs agent SECRET")
 
     # Parse all regions' babel data
     regions = {}
@@ -44,8 +62,11 @@ def get_topology_graph(servers=None):
         try:
             data = text if isinstance(text, dict) else json.loads(text)
         except Exception:
+            debug.append(f"topology: agent {region} returned invalid JSON")
             continue
         if not isinstance(data, dict) or data.get("protocol") != "babel":
+            proto = data.get("protocol") if isinstance(data, dict) else None
+            debug.append(f"topology: agent {region} protocol mismatch: {proto!r}")
             continue
 
         interfaces = data.get("interfaces") or []
@@ -54,12 +75,14 @@ def get_topology_graph(servers=None):
             continue
 
         regions[region] = {"interfaces": interfaces, "neighbors": neighbors}
+        debug.append(f"topology: agent {region} parsed interfaces={len(interfaces)} neighbors={len(neighbors)}")
 
         if data.get("errors"):
-            logger.info("topology: agent %s reported errors: %s", region, data.get("errors"))
+            debug.append(f"topology: agent {region} reported errors: {data.get('errors')}")
 
     if not regions:
-        logger.info("topology: no usable babel data from agents (200+protocol=babel required)")
+        debug.append("topology: no usable babel data from agents (200+protocol=babel required)")
+        _emit_topology_debug(debug)
         return None
 
     # Build address -> region mapping from each region's babel interface next-hop addresses.
@@ -86,11 +109,8 @@ def get_topology_graph(servers=None):
                     addr_to_region[addr] = region
 
     ambiguous_addrs = sum(1 for v in addr_to_region.values() if v is None)
-    logger.info(
-        "topology: parsed regions=%d, iface_addrs=%d (ambiguous=%d)",
-        len(regions),
-        len(addr_to_region),
-        ambiguous_addrs,
+    debug.append(
+        f"topology: parsed regions={len(regions)} iface_addrs={len(addr_to_region)} ambiguous={ambiguous_addrs}"
     )
 
     # Infer PoP<->PoP edges by matching neighbor address to remote region's interface address.
@@ -128,15 +148,20 @@ def get_topology_graph(servers=None):
                 edges[key] = cost
 
     if not edges:
-        logger.info(
+        debug.append(
             "topology: no edges inferred (neighbor_rows=%d). "
-            "Likely neighbor address does not match any remote next_hop_v6/v4 or addresses are ambiguous.",
-            neighbor_rows,
+            "Likely neighbor address does not match any remote next_hop_v6/v4 or addresses are ambiguous."
+            % neighbor_rows
         )
+        _emit_topology_debug(debug)
         return None
 
-    logger.info("topology: inferred edges=%d", len(edges))
-    return _render_graph(servers, edges)
+    debug.append(f"topology: inferred edges={len(edges)}")
+    png_path = _render_graph(servers, edges)
+    if not png_path:
+        debug.append("topology: graph rendering failed")
+        _emit_topology_debug(debug)
+    return png_path
 
 
 def _render_graph(servers, edges):
@@ -146,6 +171,10 @@ def _render_graph(servers, edges):
     """
     dot_path = shutil.which("dot")
     if not dot_path:
+        try:
+            print("topology: graphviz 'dot' not found", flush=True)
+        except Exception:
+            pass
         return None
 
     # Short labels for our servers
@@ -208,15 +237,28 @@ def _render_graph(servers, edges):
                 stderr = (result.stderr or b"").decode("utf-8", errors="replace")
             except Exception:
                 stderr = "<decode failed>"
-            logger.info("topology: graphviz dot failed rc=%s stderr=%s", result.returncode, stderr[:500])
+            msg = f"topology: graphviz dot failed rc={result.returncode} stderr={stderr[:500]}"
+            logger.warning("%s", msg)
+            try:
+                print(msg, flush=True)
+            except Exception:
+                pass
             shutil.rmtree(tmpdir, ignore_errors=True)
             return None
 
         if not os.path.isfile(png_file):
+            try:
+                print("topology: graphviz did not produce png output", flush=True)
+            except Exception:
+                pass
             shutil.rmtree(tmpdir, ignore_errors=True)
             return None
 
         return png_file
-    except Exception:
+    except Exception as e:
+        try:
+            print(f"topology: unexpected render exception: {type(e).__name__}: {e}", flush=True)
+        except Exception:
+            pass
         shutil.rmtree(tmpdir, ignore_errors=True)
         return None

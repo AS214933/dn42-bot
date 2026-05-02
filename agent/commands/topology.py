@@ -104,6 +104,21 @@ async def get_igp_topology(request):
     interfaces = _parse_babel_interfaces(iface_out) if iface_out else []
     neighbors = _parse_babel_neighbors(neigh_out) if neigh_out else []
 
+    if errors:
+        try:
+            print(f"igp_topology: birdc errors (ctl={base.BIRD_CTL_PATH}): {errors}", flush=True)
+        except Exception:
+            pass
+    elif not interfaces and not neighbors:
+        try:
+            print(
+                f"igp_topology: babel data empty (ctl={base.BIRD_CTL_PATH}); "
+                "check babel is configured and has neighbors",
+                flush=True,
+            )
+        except Exception:
+            pass
+
     return web.json_response({
         "protocol": "babel",
         "interfaces": interfaces,
