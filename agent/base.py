@@ -42,26 +42,33 @@ def ensure_wg_interfaces_up():
     """
 
     try:
-        configs = [
-            i[5:-5]
-            for i in os.listdir("/etc/wireguard")
-            if i.startswith("dn42-") and i.endswith(".conf") and i[5:-5].isdigit()
-        ]
+        configs = {
+            f[:-5]: os.path.join("/etc/wireguard", f)
+            for f in os.listdir("/etc/wireguard")
+            if f.startswith("dn42-") and f.endswith(".conf")
+        }
     except FileNotFoundError:
         return
 
-    out = simple_run("wg show interfaces")
-    if not out:
-        existing = set()
-    else:
-        existing = set(out.split())
+    if not configs:
+        return
 
-    for asn in configs:
-        if f"dn42-{asn}" not in existing:
-            try:
-                simple_run(f"wg-quick up dn42-{asn}", timeout=10)
-            except Exception:
-                # 单个接口启动失败不应阻止 agent 启动
-                continue
+    out = simple_run("wg show interfaces")
+    existing = set(out.split()) if out else set()
+
+    to_start = [name for name in configs if name not in existing]
+    if not to_start:
+        return
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _up(iface_name):
+        try:
+            simple_run(f"wg-quick up {iface_name}", timeout=10)
+        except Exception:
+            pass
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        executor.map(_up, to_start)
 
 routes = web.RouteTableDef()
