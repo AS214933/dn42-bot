@@ -6,9 +6,14 @@ import subprocess
 import tempfile
 from ipaddress import ip_address
 
+from expiringdict import ExpiringDict
+
 import base
 
 logger = logging.getLogger(__name__)
+
+# 拓扑图 PNG 缓存，1 分钟过期，最多 1 个条目
+_topology_cache = ExpiringDict(max_len=1, max_age_seconds=60)
 
 
 def _emit_topology_debug(lines):
@@ -41,6 +46,15 @@ def get_topology_graph(servers=None):
     """
     if servers is None:
         servers = base.servers
+
+    # 缓存命中：直接返回缓存的 PNG
+    cached = _topology_cache.get("topology")
+    if cached is not None:
+        tmpdir = tempfile.mkdtemp(prefix="dn42_topology_")
+        png_file = os.path.join(tmpdir, "topology.png")
+        with open(png_file, "wb") as f:
+            f.write(cached)
+        return png_file
 
     from tools.tools import get_from_agent
 
@@ -161,6 +175,13 @@ def get_topology_graph(servers=None):
     if not png_path:
         debug.append("topology: graph rendering failed")
         _emit_topology_debug(debug)
+    else:
+        # 渲染成功后缓存 PNG 字节
+        try:
+            with open(png_path, "rb") as f:
+                _topology_cache["topology"] = f.read()
+        except Exception:
+            pass
     return png_path
 
 
