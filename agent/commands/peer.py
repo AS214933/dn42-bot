@@ -1,10 +1,13 @@
 import os
 import re
+import time
 from ipaddress import IPv4Network, IPv6Network, ip_address
 
 import base
 from aiohttp import web
 from tools import set_sentry, simple_run
+
+WG_HANDSHAKE_STALE_SECONDS = 900  # 15 minutes
 
 
 def get_current_peer_num():
@@ -421,3 +424,99 @@ async def restart_peer(request):
             return web.Response(body="wg error", status=500)
         else:
             return web.Response(status=200)
+
+
+@base.routes.post("/errorlist")
+@set_sentry
+async def errorlist(request):
+    secret = request.headers.get("X-DN42-Bot-Api-Secret-Token")
+    if secret != base.SECRET:
+        return web.Response(status=403)
+
+    wg_dir = "/etc/wireguard"
+    bird_dir = "/etc/bird/dn42_peers"
+
+    wg_asns = set()
+    bird_asns = set()
+    try:
+        for f in os.listdir(wg_dir):
+            if f.startswith("dn42-") and f.endswith(".conf") and f[5:-5].isdigit():
+                wg_asns.add(int(f[5:-5]))
+    except OSError:
+        pass
+    try:
+        for f in os.listdir(bird_dir):
+            if f.endswith(".conf") and f[:-5].isdigit():
+                bird_asns.add(int(f[:-5]))
+    except OSError:
+        pass
+
+    all_asns = sorted(wg_asns | bird_asns)
+    now = int(time.time())
+    errors = []
+
+    for asn in all_asns:
+        issues = []
+        # Config mismatch
+        if asn in wg_asns and asn not in bird_asns:
+            issues.append("WireGuard config exists but BIRD config missing")
+        elif asn not in wg_asns and asn in bird_asns:
+            issues.append("BIRD config exists but WireGuard config missing")
+
+        # WireGuard checks
+        if asn in wg_asns:
+            try:
+                out = simple_run(f"wg show dn42-{asn} latest-handshakes")
+                if not out or out == "Unable to access interface: No such device":
+                    issues.append("WireGuard interface down or not accessible")
+                else:
+                    parts = out.split()
+                    if len(parts) >= 2:
+                        try:
+                            handshake_ts = int(parts[1])
+                            if handshake_ts == 0:
+                                issues.append("WireGuard never handshaked")
+                            elif now - handshake_ts > WG_HANDSHAKE_STALE_SECONDS:
+                                issues.append("WireGuard handshake stale")
+                        except ValueError:
+                            issues.append("WireGuard handshake data unreadable")
+                    else:
+                        issues.append("WireGuard handshake data empty")
+            except Exception:
+                issues.append("WireGuard status check failed")
+
+        # BIRD BGP checks — only for sessions that exist in config
+        if asn in bird_asns:
+            try:
+                with open(f"/etc/bird/dn42_peers/{asn}.conf", "r") as f:
+                    bird_raw = f.read()
+                sessions_to_check = []
+                if re.search(rf"protocol bgp DN42_{asn}_v4 ", bird_raw):
+                    sessions_to_check.append("v4")
+                if re.search(rf"protocol bgp DN42_{asn}_v6 ", bird_raw):
+                    sessions_to_check.append("v6")
+            except OSError:
+                sessions_to_check = []
+                issues.append("BIRD config unreadable")
+            for suffix in sessions_to_check:
+                session = f"DN42_{asn}_{suffix}"
+                try:
+                    out = simple_run(f"birdc -s {base.BIRD_CTL_PATH} show protocols {session}")
+                    lines = out.splitlines()
+                    if len(lines) != 3:
+                        issues.append(f"BIRD {session} not found or error")
+                        continue
+                    fields = lines[2].strip().split(maxsplit=6)
+                    if len(fields) < 6 or fields[0] != session:
+                        issues.append(f"BIRD {session} parse error")
+                        continue
+                    state = fields[5]
+                    if state != "Established":
+                        issues.append(f"BIRD {session} state: {state}")
+                except Exception:
+                    issues.append(f"BIRD {session} check failed")
+
+        if issues:
+            errors.append({"asn": asn, "issues": issues})
+
+    return web.json_response(errors)
