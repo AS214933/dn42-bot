@@ -213,7 +213,7 @@ def _render_graph(servers, edges):
     lines = [
         "graph topology {",
         f'    graph [splines="ortho", bgcolor="{bg}", pad="0.8", nodesep="1.0", ranksep="1.0", outputorder="edgesfirst"];',
-        '    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=10, fontcolor="#24292f", fillcolor="#ffffff", color="#d0d7de", penwidth="1.0", margin="0.15,0.08"];',
+        '    node [shape=box, style="filled,rounded", fontname="Helvetica", fontsize=13, fontcolor="#24292f", fillcolor="#ffffff", color="#d0d7de", penwidth="1.0", margin="0.25,0.15"];',
         '    edge [color="#d0d7de", penwidth="1.0"];',
         "",
         f'    labelloc="t"; label="IGP Network Topology  |  {timestamp}"; fontsize=11; fontname="Helvetica"; fontcolor="#57606a";',
