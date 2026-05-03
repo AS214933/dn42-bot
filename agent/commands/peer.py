@@ -71,7 +71,7 @@ async def get_info(request):
         r"(?:MTU = (?P<mtu>[0-9]+)\n)?"
         r"PostUp = wg set %i private-key /etc/wireguard/dn42-privatekey\n"
         r"PostUp = ip addr add (?P<my_lla>fe80::[0-9a-f:]+)/64(?: peer (?P<peer_lla>fe80::[0-9a-f:]+)/64)? dev %i\n"
-        r"PostUp = ip addr add (?P<my_ula>f[cd][0-9a-f:]+)/128(?: peer (?P<peer_ula>f[cd][0-9a-f:]+)/128)? dev %i\n"
+        r"PostUp = ip addr add (?P<my_ula>f[cd][0-9a-f:]+)/[0-9]+(?: peer (?P<peer_ula>f[cd][0-9a-f:]+)/[0-9]+)? dev %i\n"
         r"PostUp = ip addr add " + str(base.MY_DN42_IPv4_ADDRESS) + r"/32(?: peer (?P<peer_ipv4>[0-9.]+)/32)? dev %i\n"
         r"\[Peer\]\n"
         r"PublicKey = (?P<pubkey>.{43}=)\n"
