@@ -1,3 +1,4 @@
+import html
 import json
 
 import base
@@ -67,20 +68,19 @@ def cmd_errorlist(message):
             for issue in issues:
                 lines.append(f"  [{display}] {issue}")
 
-    text = "\n".join(lines)
-    msg = f"```\n{text}\n```"
+    text = html.escape("\n".join(lines))
+    msg = f"<pre>{text}</pre>"
 
     # Split if too long
     chunks = tools.split_long_msg(msg, limit=4000)
     if chunks is None:
-        # Single line too long, send raw
-        bot.send_message(message.chat.id, msg, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, msg, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
     elif len(chunks) == 1:
-        bot.send_message(message.chat.id, chunks[0], parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, chunks[0], parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
     else:
         last_msg = message
         for i, chunk in enumerate(chunks):
             if i < len(chunks) - 1:
-                last_msg = bot.reply_to(last_msg, chunk, parse_mode="Markdown")
+                last_msg = bot.reply_to(last_msg, chunk, parse_mode="HTML")
             else:
-                bot.reply_to(last_msg, chunk, parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
+                bot.reply_to(last_msg, chunk, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
