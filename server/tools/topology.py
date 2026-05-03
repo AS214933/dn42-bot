@@ -177,42 +177,59 @@ def _render_graph(servers, edges):
             pass
         return None
 
-    # Short labels for our servers
-    short_names = {}
-    for key, display in servers.items():
-        parts = display.split("|")
-        short_names[key] = parts[0].strip() if parts else key
-
     # Find max cost among reachable edges for line thickness scaling
     reachable_costs = [c for c in edges.values() if c < 65535]
     max_cost = max(reachable_costs) if reachable_costs else 1
 
+    # Assign each node a distinct color
+    neon_colors = ["#58a6ff", "#3fb950", "#f0883e", "#bc8cff", "#f778ba", "#79c0ff", "#56d364", "#d29922"]
+    node_color = {}
+    for i, key in enumerate(servers):
+        node_color[key] = neon_colors[i % len(neon_colors)]
+
+    bg = "#0a0e17"
+
+    def _blend_with_bg(hex_color, alpha=0.35):
+        """Blend a hex color toward the background for transparency effect."""
+        try:
+            r = int(hex_color[1:3], 16)
+            g = int(hex_color[3:5], 16)
+            b = int(hex_color[5:7], 16)
+            br = int(bg[1:3], 16)
+            bv = int(bg[3:5], 16)
+            bb = int(bg[5:7], 16)
+            r = int(br + (r - br) * alpha)
+            g = int(bv + (g - bv) * alpha)
+            b = int(bb + (b - bb) * alpha)
+            return f"#{r:02x}{g:02x}{b:02x}"
+        except Exception:
+            return hex_color
+
     # Generate DOT — dark theme, bgp.tools style
+    # Nodes are small dots; labels are placed beside them via xlabel.
     lines = [
         "graph topology {",
-        '    graph [overlap=false, splines="true", bgcolor="#0d1117", pad="0.5", nodesep="1.2", ranksep="1.0", outputorder="edgesfirst"];',
-        '    node [shape=circle, style="filled", fontname="Helvetica", fontsize=11, fontcolor="white", width="0.9", fixedsize=true];',
-        '    edge [color="#30363d", penwidth="1.2"];',
+        f'    graph [overlap="prism", splines="true", bgcolor="{bg}", pad="0.8", nodesep="1.5", ranksep="1.2", outputorder="edgesfirst"];',
+        '    node [shape=point, width="0.15", height="0.15"];',
+        '    edge [penwidth="1.0"];',
         "",
-        '    labelloc="t"; label="IGP Network Topology"; fontsize=13; fontname="Helvetica Bold"; fontcolor="#c9d1d9";',
+        '    labelloc="t"; label="IGP Network Topology"; fontsize=13; fontname="Helvetica Bold"; fontcolor="#8b949e";',
         "",
     ]
 
-    # PoP nodes — distinct neon colors
-    colors = ["#58a6ff", "#3fb950", "#f0883e", "#bc8cff", "#f778ba", "#79c0ff", "#56d364", "#d29922"]
+    # PoP nodes — small colored dot + label beside it
     for i, (key, display) in enumerate(servers.items()):
-        label = short_names.get(key, key)
-        color = colors[i % len(colors)]
-        lines.append(f'    "{key}" [label="{label}", fillcolor="{color}"];')
+        color = node_color[key]
+        lines.append(f'    "{key}" [xlabel="{display}", fillcolor="{color}", color="{color}"];')
 
     lines.append("")
 
-    # Edges — skip unreachable (65535), thickness encodes quality
+    # Edges — skip unreachable (65535), thin lines colored by source node (blended for transparency)
     for (a, b), cost in sorted(edges.items()):
         if cost >= 65535:
             continue
-        penwidth = max(0.8, 3.0 * (1.0 - cost / (max_cost + 1)) + 0.8)
-        lines.append(f'    "{a}" -- "{b}" [penwidth={penwidth:.1f}];')
+        color = _blend_with_bg(node_color.get(a, "#30363d"))
+        lines.append(f'    "{a}" -- "{b}" [color="{color}", penwidth="1.0"];')
 
     lines.append("}")
     dot_content = "\n".join(lines)
