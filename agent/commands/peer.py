@@ -71,7 +71,7 @@ async def get_info(request):
         r"(?:MTU = (?P<mtu>[0-9]+)\n)?"
         r"PostUp = wg set %i private-key /etc/wireguard/dn42-privatekey\n"
         r"PostUp = ip addr add (?P<my_lla>fe80::[0-9a-f:]+)/64(?: peer (?P<peer_lla>fe80::[0-9a-f:]+)/64)? dev %i\n"
-        r"PostUp = ip addr add " + str(base.MY_DN42_ULA_ADDRESS) + r"/128(?: peer (?P<peer_ula>f[cd][0-9a-f:]+)/128)? dev %i\n"
+        r"PostUp = ip addr add (?P<my_ula>f[cd][0-9a-f:]+)/128(?: peer (?P<peer_ula>f[cd][0-9a-f:]+)/128)? dev %i\n"
         r"PostUp = ip addr add " + str(base.MY_DN42_IPv4_ADDRESS) + r"/32(?: peer (?P<peer_ipv4>[0-9.]+)/32)? dev %i\n"
         r"\[Peer\]\n"
         r"PublicKey = (?P<pubkey>.{43}=)\n"
@@ -112,10 +112,10 @@ async def get_info(request):
         my_v6 = wg_groups["my_lla"]
     elif wg_groups["peer_ula"]:
         v6 = wg_groups["peer_ula"]
-        my_v6 = str(base.MY_DN42_ULA_ADDRESS)
+        my_v6 = wg_groups["my_ula"]
     else:
         v6 = None
-        my_v6 = str(base.MY_DN42_ULA_ADDRESS)
+        my_v6 = wg_groups["my_ula"]
     my_v4 = str(base.MY_DN42_IPv4_ADDRESS) if wg_groups["peer_ipv4"] else None
     psk = wg_groups["psk"] if wg_groups["psk"] else None
     clearnet = wg_groups["clearnet"] if wg_groups["clearnet"] else None
