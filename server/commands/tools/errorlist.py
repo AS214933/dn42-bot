@@ -68,19 +68,22 @@ def cmd_errorlist(message):
             for issue in issues:
                 lines.append(f"  [{display}] {issue}")
 
-    text = html.escape("\n".join(lines))
+    raw_text = "\n".join(lines)
+    text = html.escape(raw_text)
     msg = f"<pre>{text}</pre>"
 
-    # Split if too long
-    chunks = tools.split_long_msg(msg, limit=4000)
-    if chunks is None:
+    if len(msg) <= 4000:
         bot.send_message(message.chat.id, msg, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
-    elif len(chunks) == 1:
-        bot.send_message(message.chat.id, chunks[0], parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
     else:
-        last_msg = message
-        for i, chunk in enumerate(chunks):
-            if i < len(chunks) - 1:
-                last_msg = bot.reply_to(last_msg, chunk, parse_mode="HTML")
-            else:
-                bot.reply_to(last_msg, chunk, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
+        # Split raw text, then wrap each chunk with <pre> tags
+        chunks = tools.split_long_msg(raw_text, limit=3900)
+        if chunks is None:
+            bot.send_message(message.chat.id, msg, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
+        else:
+            last_msg = message
+            for i, chunk in enumerate(chunks):
+                part = f"<pre>{html.escape(chunk)}</pre>"
+                if i < len(chunks) - 1:
+                    last_msg = bot.reply_to(last_msg, part, parse_mode="HTML")
+                else:
+                    bot.reply_to(last_msg, part, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
