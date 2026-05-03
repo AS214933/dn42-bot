@@ -187,31 +187,31 @@ def _render_graph(servers, edges):
     reachable_costs = [c for c in edges.values() if c < 65535]
     max_cost = max(reachable_costs) if reachable_costs else 1
 
-    # Generate DOT
+    # Generate DOT — dark theme, bgp.tools style
     lines = [
         "graph topology {",
-        '    graph [overlap=false, splines="ortho", bgcolor="#FAFBFC", pad="0.8", nodesep="1.0", ranksep="1.2"];',
-        '    node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=12, margin="0.15,0.08"];',
-        '    edge [fontname="Helvetica", fontsize=9, color="#9CA3AF"];',
+        '    graph [overlap=false, splines="true", bgcolor="#0d1117", pad="0.5", nodesep="1.2", ranksep="1.0", outputorder="edgesfirst"];',
+        '    node [shape=circle, style="filled", fontname="Helvetica", fontsize=11, fontcolor="white", width="0.9", fixedsize=true];',
+        '    edge [color="#30363d", penwidth="1.2"];',
         "",
-        '    labelloc="t"; label="IGP Network Topology"; fontsize=14; fontname="Helvetica Bold";',
+        '    labelloc="t"; label="IGP Network Topology"; fontsize=13; fontname="Helvetica Bold"; fontcolor="#c9d1d9";',
         "",
     ]
 
-    # PoP nodes — blue gradient
-    colors = ["#2563EB", "#3B82F6", "#60A5FA", "#93C5FD"]
+    # PoP nodes — distinct neon colors
+    colors = ["#58a6ff", "#3fb950", "#f0883e", "#bc8cff", "#f778ba", "#79c0ff", "#56d364", "#d29922"]
     for i, (key, display) in enumerate(servers.items()):
         label = short_names.get(key, key)
         color = colors[i % len(colors)]
-        lines.append(f'    "{key}" [label="{label}", fillcolor="{color}", fontcolor="white", penwidth="0"];')
+        lines.append(f'    "{key}" [label="{label}", fillcolor="{color}"];')
 
     lines.append("")
 
-    # Edges — skip unreachable (65535), no labels, thickness encodes quality
+    # Edges — skip unreachable (65535), thickness encodes quality
     for (a, b), cost in sorted(edges.items()):
         if cost >= 65535:
             continue
-        penwidth = max(1.0, 4.0 * (1.0 - cost / (max_cost + 1)) + 1.0)
+        penwidth = max(0.8, 3.0 * (1.0 - cost / (max_cost + 1)) + 0.8)
         lines.append(f'    "{a}" -- "{b}" [penwidth={penwidth:.1f}];')
 
     lines.append("}")
