@@ -22,5 +22,6 @@
     "BIRD_TABLE_6": "master6",
     "VNSTAT_AUTO_ADD": true,
     "VNSTAT_AUTO_REMOVE": false,
-    "DEFAULT_MTU": 1420
+    "DEFAULT_MTU": 1420,
+    "SERVER_URL": ""
 }

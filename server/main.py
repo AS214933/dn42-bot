@@ -256,6 +256,36 @@ if config.WEBHOOK_URL:
     async def health(request):
         return web.Response(body=",".join(base.servers.keys()))
 
+    async def broadcast_endpoint(request):
+        secret = request.headers.get("X-DN42-Bot-Api-Secret-Token")
+        if secret != config.API_TOKEN:
+            return web.Response(status=403)
+        try:
+            body = await request.json()
+        except Exception:
+            return web.Response(status=400)
+        if body.get("type") == "dns_failure":
+            failures = body.get("failures", [])
+            if failures:
+                lines = []
+                for f in failures:
+                    asn = f.get("asn", "?")
+                    endpoint = f.get("endpoint", "N/A")
+                    lines.append(f"AS{asn}: `{endpoint}`")
+                text = (
+                    "*[Privilege]*\n"
+                    "⚠️ WireGuard DNS Resolution Failure\n"
+                    "The following peers failed to start due to unresolvable endpoints.\n"
+                    "Their Endpoint has been removed and the interfaces brought up without it.\n\n"
+                    + "\n".join(lines)
+                )
+                for chat_id in base.db_privilege:
+                    try:
+                        base.bot.send_message(chat_id, text, parse_mode="Markdown")
+                    except Exception:
+                        pass
+        return web.Response(status=200)
+
     def render_web_page(title, message):
         safe_title = html.escape(title)
         safe_message = "<br>".join(html.escape(message).splitlines())
@@ -308,6 +338,7 @@ if config.WEBHOOK_URL:
     app = web.Application()
     app.router.add_post("/", handle)
     app.router.add_post("/health", health)
+    app.router.add_post("/internal/broadcast", broadcast_endpoint)
     if oidc.has_enabled_providers():
         app.router.add_get(oidc.get_webapp_start_path(), oidc_webapp_start)
         app.router.add_get(oidc.get_callback_path(), oidc_callback)

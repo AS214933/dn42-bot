@@ -1,11 +1,14 @@
 import json
 import os
+import re
+import threading
+import urllib.request
 from ipaddress import ip_address
 from tools import simple_run
 
 from aiohttp import web
 
-AGENT_VERSION = 28
+AGENT_VERSION = 29
 
 try:
     with open("agent_config.json", "r") as f:
@@ -29,9 +32,81 @@ try:
     VNSTAT_AUTO_REMOVE = raw_config["VNSTAT_AUTO_REMOVE"] if VNSTAT_AUTO_ADD else False
     DEFAULT_MTU = raw_config.get("DEFAULT_MTU", 1420)
     SENTRY_DSN = raw_config["SENTRY_DSN"]
+    SERVER_URL = raw_config.get("SERVER_URL")
 except BaseException:
     print("Failed to load config file. Exiting.")
     exit(1)
+
+
+def _is_dns_error(output):
+    """Check if wg-quick output indicates a DNS resolution failure."""
+    if not output:
+        return False
+    lower = output.lower()
+    return any(
+        keyword in lower
+        for keyword in (
+            "name or service not known",
+            "temporary failure in name resolution",
+            "no address associated with hostname",
+            "nodename nor servname provided",
+            "non-recoverable failure in name resolution",
+            "could not resolve",
+        )
+    )
+
+
+def _has_hostname_endpoint(config_path):
+    """Check if a WireGuard config has a hostname-based (non-IP) Endpoint."""
+    try:
+        with open(config_path, "r") as f:
+            for line in f:
+                if line.strip().startswith("Endpoint"):
+                    value = line.split("=", 1)[1].strip()
+                    host = value.rsplit(":", 1)[0].strip().strip("[]")
+                    try:
+                        ip_address(host)
+                        return False
+                    except ValueError:
+                        return True
+    except OSError:
+        pass
+    return False
+
+
+def _remove_endpoint_from_config(config_path):
+    """Remove the Endpoint line from a WireGuard config file."""
+    try:
+        with open(config_path, "r") as f:
+            content = f.read()
+        new_content = re.sub(r"^Endpoint\s*=.*\n?", "", content, flags=re.MULTILINE)
+        with open(config_path, "w") as f:
+            f.write(new_content)
+        return True
+    except OSError:
+        return False
+
+
+def _notify_server_dns_failures(failures):
+    """POST a list of ASN/endpoint pairs to the server's broadcast endpoint."""
+    if not SERVER_URL or not failures:
+        return
+    try:
+        url = SERVER_URL.rstrip("/") + "/internal/broadcast"
+        data = json.dumps({"type": "dns_failure", "failures": failures}).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "X-DN42-Bot-Api-Secret-Token": SECRET,
+            },
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception:
+        pass
+
 
 def ensure_wg_interfaces_up():
     """On startup, scan /etc/wireguard and ensure dn42-* interfaces are up.
@@ -39,6 +114,10 @@ def ensure_wg_interfaces_up():
     This is intended for container environments where systemd is not managing
     wg-quick@ units. It compares existing configs with `wg show` output and
     brings up any missing interfaces.
+
+    If an interface fails to start due to an unresolvable Endpoint, the
+    Endpoint is removed from the config and the interface is retried. A
+    notification is sent to the server for admin broadcast.
     """
 
     try:
@@ -60,15 +139,48 @@ def ensure_wg_interfaces_up():
     if not to_start:
         return
 
-    from concurrent.futures import ThreadPoolExecutor
+    dns_failures = []
+    lock = threading.Lock()
 
     def _up(iface_name):
+        config_path = configs[iface_name]
         try:
-            simple_run(f"wg-quick up {iface_name}", timeout=10)
+            output = simple_run(f"wg-quick up {iface_name}", timeout=10)
+        except Exception:
+            return
+        # Verify the interface actually failed to come up
+        try:
+            current = simple_run("wg show interfaces")
+            if iface_name in (current.split() if current else []):
+                return  # interface is up, no issue
         except Exception:
             pass
+        # Check if failure was caused by DNS resolution
+        if _is_dns_error(output) and _has_hostname_endpoint(config_path):
+            asn = iface_name[5:] if iface_name.startswith("dn42-") else iface_name
+            endpoint = None
+            try:
+                with open(config_path, "r") as f:
+                    for line in f:
+                        if line.strip().startswith("Endpoint"):
+                            endpoint = line.split("=", 1)[1].strip()
+                            break
+            except OSError:
+                pass
+            if _remove_endpoint_from_config(config_path):
+                try:
+                    simple_run(f"wg-quick up {iface_name}", timeout=10)
+                except Exception:
+                    pass
+                with lock:
+                    dns_failures.append({"asn": asn, "endpoint": endpoint})
+
+    from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         executor.map(_up, to_start)
+
+    if dns_failures:
+        _notify_server_dns_failures(dns_failures)
 
 routes = web.RouteTableDef()
