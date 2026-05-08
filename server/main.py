@@ -63,6 +63,10 @@ class MyMiddleware(BaseMiddleware):
         if len(command) > 1:
             if command[-1].lower() != bot.get_me().username.lower():
                 return CancelUpdate()
+        if command[0].startswith("/"):
+            cmd_name = command[0][1:].lower()
+            if cmd_name in base.banned_commands and message.chat.id not in base.db_privilege:
+                return CancelUpdate()
         if config.SENTRY_DSN and command[0].startswith("/"):
             self.transaction = sentry_sdk.start_transaction(
                 name=f"Server {command[0]}",
@@ -174,7 +178,7 @@ scheduler.start()
 bot.add_custom_filter(IsPrivateChat())
 bot.setup_middleware(MyMiddleware())
 
-cmd_list = {
+base.cmd_list = {
     "ping": ("Ping IP / Domain", True),
     "tcping": ("TCPing IP / Domain", True),
     "trace": ("Traceroute IP / Domain", True),
@@ -196,22 +200,16 @@ cmd_list = {
     "peer_list": ("Show the peer situation of a user 显示某 DN42 用户的 Peer 情况", True),
     "topology": ("Show IGP network topology 显示 IGP 网络拓扑", True),
     "agent_config": ("View/modify agent config 查看/修改 Agent 配置", False),
+    "ban_command": ("Ban/unban commands for non-admin users 禁用/启用指令", False),
     "errorlist": ("List all faulty peers 列出所有故障 Peer", False),
 }
 if config.FLAPALERTED_URL:
-    cmd_list["flaps"] = ("Show current flap prefixes 显示当前抖动前缀", True)
-cmd_list |= {
+    base.cmd_list["flaps"] = ("Show current flap prefixes 显示当前抖动前缀", True)
+base.cmd_list |= {
     "cancel": ("Cancel ongoing operations 取消正在进行的操作", True),
     "help": ("Get help text 获取帮助文本", True),
 }
-bot.delete_my_commands()
-bot.set_my_commands(
-    [telebot.types.BotCommand(cmd, desc) for cmd, (desc, public_available) in cmd_list.items() if public_available]
-)
-bot.set_my_commands(
-    [telebot.types.BotCommand(cmd, desc) for cmd, (desc, _) in cmd_list.items()],
-    scope=BotCommandScopeAllPrivateChats(),
-)
+base.refresh_bot_commands()
 
 data_dir = "./data"
 os.makedirs(data_dir, exist_ok=True)
@@ -225,15 +223,8 @@ for pname, pmod in plugins.get_loaded_plugins().items():
     if hasattr(pmod, "COMMANDS"):
         plugin_cmds.update(pmod.COMMANDS)
 if plugin_cmds:
-    cmd_list.update(plugin_cmds)
-    bot.delete_my_commands()
-    bot.set_my_commands(
-        [telebot.types.BotCommand(cmd, desc) for cmd, (desc, public_available) in cmd_list.items() if public_available]
-    )
-    bot.set_my_commands(
-        [telebot.types.BotCommand(cmd, desc) for cmd, (desc, _) in cmd_list.items()],
-        scope=BotCommandScopeAllPrivateChats(),
-    )
+    base.cmd_list.update(plugin_cmds)
+    base.refresh_bot_commands()
 
 
 bot.remove_webhook()

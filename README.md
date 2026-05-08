@@ -30,6 +30,7 @@
 | NEED_ADMIN_SERVER   | (Optional) Servers that require admin (privileged) permission to create new peers.             |
 | TOOLS_HIDDEN_SERVERS | (Optional) Nodes listed here will be completely hidden from the UI and cannot be selected.   |
 | HIDDEN_ENDPOINT_SERVERS | (Optional) Servers whose WireGuard endpoint should not be revealed to users.              |
+| BANNED_COMMANDS | (Optional) A list of commands that are banned to use. E.g. `["ping", "traceroute"]` will ban `/ping` and `/traceroute` commands. |
 
 `agent/agent_config.json`：
 | Config Key                 | Description                                                  |

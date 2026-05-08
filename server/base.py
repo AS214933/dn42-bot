@@ -32,3 +32,33 @@ try:
 except BaseException:
     db = {}
     db_privilege = set()
+
+# Banned commands — persisted to ./data/banned_commands.pkl
+try:
+    with open(os.path.join(data_dir, "banned_commands.pkl"), "rb") as f:
+        banned_commands = pickle.load(f)
+except BaseException:
+    banned_commands = set(getattr(config, "BANNED_COMMANDS", []) or [])
+
+# Command list — populated by main.py, used by refresh_bot_commands()
+cmd_list = {}
+
+
+def save_banned_commands():
+    os.makedirs(data_dir, exist_ok=True)
+    with open(os.path.join(data_dir, "banned_commands.pkl"), "wb") as f:
+        pickle.dump(banned_commands, f)
+
+
+def refresh_bot_commands():
+    from telebot.types import BotCommand, BotCommandScopeAllPrivateChats
+
+    visible = {c: (d, p) for c, (d, p) in cmd_list.items() if c not in banned_commands}
+    bot.delete_my_commands()
+    bot.set_my_commands(
+        [BotCommand(c, d) for c, (d, p) in visible.items() if p]
+    )
+    bot.set_my_commands(
+        [BotCommand(c, d) for c, (d, _) in visible.items()],
+        scope=BotCommandScopeAllPrivateChats(),
+    )

@@ -101,6 +101,11 @@ FLAPALERTED_URL = "https://flap-dn42.potat0.cc/"
 CN_WHITELIST_IP = ["8.8.8.8", "2001:4860:4860::8888"]
 SENTRY_DSN = None
 
+# Commands that are disabled for non-admin users.
+# Admins can also manage this at runtime via /ban_command.
+# Example: ["topology", "trace"]
+BANNED_COMMANDS = []
+
 # Plugin system — load plugins from Git repositories
 # Each entry: {"git": "<repo_url>", "name": "<plugin_name>", "branch": "<optional_branch>"}
 # PLUGINS = [
