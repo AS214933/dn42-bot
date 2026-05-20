@@ -794,9 +794,9 @@ def post_psk(message, peer_info):
     text = message.text.strip()
     if text.lower() == "skip":
         peer_info["PresharedKey"] = None
-        return "pre_contact", peer_info, message
+        return "pre_mtu", peer_info, message
     if text.lower() == "keep current" and peer_info.get("PresharedKey"):
-        return "pre_contact", peer_info, message
+        return "pre_mtu", peer_info, message
     if len(text) != 44 or text[-1] != "=":
         markup = ReplyKeyboardMarkup(resize_keyboard=True)
         markup.row_width = 1
@@ -815,7 +815,7 @@ def post_psk(message, peer_info):
         )
         return "post_psk", peer_info, msg
     peer_info["PresharedKey"] = text
-    return "pre_contact", peer_info, message
+    return "pre_mtu", peer_info, message
 
 
 def pre_contact(message, peer_info):
@@ -865,7 +865,7 @@ def post_contact(message, peer_info):
         )
         return "post_contact", peer_info, msg
     peer_info["Contact"] = message.text.strip()
-    return "pre_mtu", peer_info, message
+    return "pre_confirm", peer_info, message
 
 
 def pre_mtu(message, peer_info):

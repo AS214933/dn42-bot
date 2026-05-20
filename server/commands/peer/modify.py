@@ -390,7 +390,7 @@ def post_action_choose(message, peer_info):
     elif message.text.strip() == "WireGuard PublicKey":
         return "pre_pubkey", peer_info, message, "pre_psk"
     elif message.text.strip() == "WireGuard PresharedKey":
-        return "pre_psk", peer_info, message, "pre_contact"
+        return "pre_psk", peer_info, message, "pre_mtu"
     elif message.text.strip() == "Contact":
         return "pre_contact", peer_info, message, "pre_confirm"
     elif message.text.strip() == "MTU":
