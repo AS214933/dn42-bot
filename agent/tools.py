@@ -1,3 +1,4 @@
+import asyncio
 import shlex
 import subprocess
 
@@ -15,6 +16,11 @@ def simple_run(command, timeout=3):
     except subprocess.CalledProcessError as e:
         output = e.output.decode("utf-8").strip()
     return output
+
+
+async def async_simple_run(command, timeout=3):
+    """Non-blocking wrapper: runs simple_run in a thread to avoid blocking the event loop."""
+    return await asyncio.to_thread(simple_run, command, timeout=timeout)
 
 
 def set_sentry(func):

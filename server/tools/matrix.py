@@ -256,7 +256,7 @@ def _color_for_value(value, vmin, vmax):
     return bg, fg
 
 
-def get_matrix_graph(servers=None, *, timeout=12, retry=1, max_workers=16):
+def get_matrix_graph(servers=None, *, timeout=15, retry=1, max_workers=16):
     """Generate and cache an inter-node latency matrix PNG.
 
     The matrix is directed: cell (src, dst) is avg RTT of src pinging dst.

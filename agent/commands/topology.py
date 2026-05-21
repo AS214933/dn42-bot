@@ -2,7 +2,7 @@ from ipaddress import ip_address
 
 import base
 from aiohttp import web
-from tools import set_sentry, simple_run
+from tools import async_simple_run, set_sentry
 
 
 def _parse_babel_neighbors(output):
@@ -90,13 +90,13 @@ async def get_igp_topology(request):
     # Babel-only: build PoP mesh strictly from `birdc show babel ...` outputs.
     errors = []
     try:
-        iface_out = simple_run(f"birdc -s {base.BIRD_CTL_PATH} show babel interfaces")
+        iface_out = await async_simple_run(f"birdc -s {base.BIRD_CTL_PATH} show babel interfaces")
     except Exception as e:
         iface_out = ""
         errors.append(f"show babel interfaces failed: {type(e).__name__}: {e}")
 
     try:
-        neigh_out = simple_run(f"birdc -s {base.BIRD_CTL_PATH} show babel neighbors")
+        neigh_out = await async_simple_run(f"birdc -s {base.BIRD_CTL_PATH} show babel neighbors")
     except Exception as e:
         neigh_out = ""
         errors.append(f"show babel neighbors failed: {type(e).__name__}: {e}")

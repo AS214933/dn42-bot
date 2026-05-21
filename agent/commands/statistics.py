@@ -3,7 +3,7 @@ import subprocess
 
 import base
 from aiohttp import web
-from tools import set_sentry, simple_run
+from tools import async_simple_run, set_sentry
 
 
 @base.routes.post("/ping")
@@ -15,7 +15,7 @@ async def ping_test(request):
     else:
         return web.Response(status=403)
     try:
-        output = simple_run(f"ping -c 5 -w 6 {target}", timeout=8)
+        output = await async_simple_run(f"ping -c 5 -w 6 {target}", timeout=8)
     except subprocess.TimeoutExpired:
         return web.Response(status=408)
     return web.Response(body=output)
@@ -30,10 +30,10 @@ async def trace_test(request):
     else:
         return web.Response(status=403)
     try:
-        output = simple_run(f"traceroute -q1 -N32 -w1 {target}", timeout=8)
+        output = await async_simple_run(f"traceroute -q1 -N32 -w1 {target}", timeout=8)
     except subprocess.TimeoutExpired:
         try:
-            output = simple_run(f"traceroute -q1 -N32 -w1 -n {target}", timeout=8)
+            output = await async_simple_run(f"traceroute -q1 -N32 -w1 -n {target}", timeout=8)
         except subprocess.TimeoutExpired:
             return web.Response(status=408)
     output = [i for i in output.splitlines()[::-1] if not re.match(r"^\s*$", i)]
@@ -56,7 +56,7 @@ async def tcping_test(request):
     else:
         return web.Response(status=403)
     try:
-        output = simple_run(f"tcping --no-color -c 5 {target}", timeout=10)
+        output = await async_simple_run(f"tcping --no-color -c 5 {target}", timeout=10)
     except subprocess.TimeoutExpired:
         return web.Response(status=408)
     output = re.sub(r"\n\nPing (?:stopped|interrupted).\n\n", "\n", output)
@@ -73,11 +73,11 @@ async def get_route(request):
         return web.Response(status=403)
     try:
         if ":" in target:
-            output = simple_run(
+            output = await async_simple_run(
                 f"birdc -s {base.BIRD_CTL_PATH} show route table {base.BIRD_TABLE_6} for {target} all primary"
             )
         else:
-            output = simple_run(
+            output = await async_simple_run(
                 f"birdc -s {base.BIRD_CTL_PATH} show route table {base.BIRD_TABLE_4} for {target} all primary"
             )
     except subprocess.TimeoutExpired:
@@ -95,11 +95,11 @@ async def get_path(request):
         return web.Response(status=403)
     try:
         if ":" in target:
-            output = simple_run(
+            output = await async_simple_run(
                 f"birdc -s {base.BIRD_CTL_PATH} show route table {base.BIRD_TABLE_6} for {target} all primary"
             )
         else:
-            output = simple_run(
+            output = await async_simple_run(
                 f"birdc -s {base.BIRD_CTL_PATH} show route table {base.BIRD_TABLE_4} for {target} all primary"
             )
     except subprocess.TimeoutExpired:
