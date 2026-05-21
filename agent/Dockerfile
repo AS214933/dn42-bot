@@ -1,11 +1,14 @@
 # Build stage for tcping
-FROM golang:1.24-alpine AS tcping-builder
+# NOTE: tcping upstream HEAD may bump Go requirements or break builds; pin to a stable ref.
+FROM golang:1.26-alpine AS tcping-builder
+
+ARG TCPING_REF=v2.8.0
 
 RUN apk add --no-cache git bash make
 
 # Build pouriyajamshidi/tcping from source
 RUN set -e; \
-    git clone --depth 1 https://github.com/pouriyajamshidi/tcping.git /tmp/tcping && \
+    git clone --depth 1 --branch "${TCPING_REF}" https://github.com/pouriyajamshidi/tcping.git /tmp/tcping && \
     cd /tmp/tcping && \
     make build
 
