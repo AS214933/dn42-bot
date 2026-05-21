@@ -1,5 +1,6 @@
 import tools.get_flaps as get_flaps
 import tools.get_map as get_map
+import tools.matrix as matrix
 import tools.servers_check as servers_check
 import tools.tools as tools
 import tools.topology as topology
@@ -23,6 +24,7 @@ is_need_admin_server = tools.is_need_admin_server
 servers_check = servers_check.servers_check
 split_long_msg = tools.split_long_msg
 get_topology_graph = topology.get_topology_graph
+get_matrix_graph = matrix.get_matrix_graph
 test_ip_domain = tools.test_ip_domain
 update_as_route_table = update_as_route_table.update_as_route_table
 update_china_ip = update_china_ip.update_china_ip

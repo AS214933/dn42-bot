@@ -199,6 +199,7 @@ base.cmd_list = {
     "stats": ("Show DN42 user basic info & statistics 显示 DN42 用户基本信息及数据", True),
     "peer_list": ("Show the peer situation of a user 显示某 DN42 用户的 Peer 情况", True),
     "topology": ("Show IGP network topology 显示 IGP 网络拓扑", True),
+    "matrix": ("Show inter-node latency matrix 显示节点间延迟矩阵", True),
     "agent_config": ("View/modify agent config 查看/修改 Agent 配置", False),
     "ban_command": ("Ban/unban commands for non-admin users 禁用/启用指令", False),
     "errorlist": ("List all faulty peers 列出所有故障 Peer", False),
