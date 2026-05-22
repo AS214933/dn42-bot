@@ -31,6 +31,10 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 # Final stage
 FROM python:3.14-slim
 
+# Build metadata
+ARG BUILD_DATE
+ARG GIT_COMMIT
+
 # Install only runtime dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -55,6 +59,10 @@ WORKDIR /app
 
 # Copy application code
 COPY . .
+
+# Write build info
+RUN echo "${BUILD_DATE:-unknown}" > /app/build_date.txt && \
+    echo "${GIT_COMMIT:-unknown}" > /app/git_commit.txt
 
 # Precompile Python bytecode and remove unnecessary files
 RUN python -m compileall -q /app && \

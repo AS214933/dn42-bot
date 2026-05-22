@@ -1,5 +1,6 @@
 # flake8: noqa
 
+import commands.about
 import commands.cancel
 import commands.help
 import commands.start

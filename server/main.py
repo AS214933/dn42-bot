@@ -179,6 +179,7 @@ bot.add_custom_filter(IsPrivateChat())
 bot.setup_middleware(MyMiddleware())
 
 base.cmd_list = {
+    "about": ("Show build info 显示构建信息", True),
     "ping": ("Ping IP / Domain", True),
     "tcping": ("TCPing IP / Domain", True),
     "trace": ("Traceroute IP / Domain", True),

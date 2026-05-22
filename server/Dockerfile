@@ -1,5 +1,9 @@
 FROM python:3.14-slim
 
+# Build metadata
+ARG BUILD_DATE
+ARG GIT_COMMIT
+
 # Install system dependencies required by the server
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -32,6 +36,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
+
+# Write build info
+RUN echo "${BUILD_DATE:-unknown}" > /app/build_date.txt && \
+    echo "${GIT_COMMIT:-unknown}" > /app/git_commit.txt
 
 # Precompile Python bytecode to avoid compile on first run
 RUN python -m compileall -q /app
