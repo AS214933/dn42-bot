@@ -435,8 +435,10 @@ def _render_matrix_png(dot_path, regions, matrix, *, vmin, vmax):
         content = html.escape(str(text))
         if bold:
             content = f"<B>{content}</B>"
+        font_attrs = 'FACE="Helvetica" POINT-SIZE="12"'
         if fg:
-            content = f'<FONT COLOR="{fg}">{content}</FONT>'
+            font_attrs += f' COLOR="{fg}"'
+        content = f"<FONT {font_attrs}>{content}</FONT>"
         return f"<TD {' '.join(attrs)}>{content}</TD>"
 
     rows = []
@@ -480,7 +482,7 @@ def _render_matrix_png(dot_path, regions, matrix, *, vmin, vmax):
         '    fontsize=11; fontcolor="#57606a";',
         "",
         "    matrix [label=<",
-        f'        <FONT FACE="Helvetica" POINT-SIZE="12">{table_html}</FONT>',
+        f"        {table_html}",
         "    >];",
         "}",
     ]
