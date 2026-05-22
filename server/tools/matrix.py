@@ -433,12 +433,13 @@ def _render_matrix_png(dot_path, regions, matrix, *, vmin, vmax):
         attrs.append('VALIGN="MIDDLE"')
         attrs.append('FIXEDSIZE="TRUE"')
         content = html.escape(str(text))
-        if bold:
-            content = f"<B>{content}</B>"
-        font_attrs = 'FACE="Helvetica" POINT-SIZE="12"'
-        if fg:
-            font_attrs += f' COLOR="{fg}"'
-        content = f"<FONT {font_attrs}>{content}</FONT>"
+        if content:
+            if bold:
+                content = f"<B>{content}</B>"
+            font_attrs = 'FACE="Helvetica" POINT-SIZE="12"'
+            if fg:
+                font_attrs += f' COLOR="{fg}"'
+            content = f"<FONT {font_attrs}>{content}</FONT>"
         return f"<TD {' '.join(attrs)}>{content}</TD>"
 
     rows = []
