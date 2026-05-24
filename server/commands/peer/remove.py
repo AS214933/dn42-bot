@@ -155,7 +155,8 @@ def remove_peer_choose(removable, chosen, message):
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardRemove(),
     )
-    if (whoisinfo := tools.get_whoisinfo_by_asn(db[message.chat.id])).lower() != peer_info["Contact"].lower():
+    peer_contact = peer_info.get("Contact") or ""
+    if (whoisinfo := tools.get_whoisinfo_by_asn(db[message.chat.id])).lower() != peer_contact.lower():
         last_info += f"\n    ({whoisinfo})\n"
     bot.register_next_step_handler(msg, partial(remove_peer_confirm, code, chosen, last_info))
 

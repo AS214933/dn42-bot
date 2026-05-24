@@ -895,7 +895,7 @@ def post_mtu(message, peer_info):
     text = message.text.strip()
     if text.lower() == "skip":
         peer_info["MTU"] = 1420
-        return "pre_confirm", peer_info, message
+        return "pre_contact", peer_info, message
     try:
         mtu = int(text)
         if not (1280 <= mtu <= 1500):
@@ -922,14 +922,15 @@ def post_mtu(message, peer_info):
         )
         return "post_mtu", peer_info, msg
     peer_info["MTU"] = mtu
-    return "pre_confirm", peer_info, message
+    return "pre_contact", peer_info, message
 
 
 def post_confirm(message, peer_info):
     progress_type = peer_info.pop("ProgressType")
     info_text = peer_info.pop("InfoText").strip()
     old_region = peer_info.pop("OldRegion", None)
-    if (whoisinfo := tools.get_whoisinfo_by_asn(db[message.chat.id])).lower() != peer_info["Contact"].lower():
+    peer_contact = peer_info.get("Contact") or ""
+    if (whoisinfo := tools.get_whoisinfo_by_asn(db[message.chat.id])).lower() != peer_contact.lower():
         info_text += f"\n    ({whoisinfo})\n"
     check_text = message.text.strip()
     if check_text.lower() != "yes":
