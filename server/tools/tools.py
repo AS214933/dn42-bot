@@ -511,3 +511,37 @@ def is_need_admin_server(server_key):
     except BaseException:
         return False
     return key in get_need_admin_servers()
+
+
+_v2_cache = ExpiringDict(max_len=100, max_age_seconds=300)
+
+
+def is_agent_v2(server_key):
+    if not server_key:
+        return False
+    cache_key = str(server_key).strip()
+    if cache_key in _v2_cache:
+        return _v2_cache[cache_key]
+
+    if cache_key in config.HOSTS:
+        api = config.HOSTS[cache_key]
+    else:
+        api = f"{cache_key}.{config.ENDPOINT}"
+
+    try:
+        resp = requests.post(
+            f"http://{api}:{config.API_PORT}/listpeers",
+            data="{}",
+            headers={"X-DN42-Bot-Api-Secret-Token": config.API_TOKEN},
+            timeout=10,
+        )
+        result = resp.status_code == 200
+    except BaseException:
+        result = False
+
+    _v2_cache[cache_key] = result
+    return result
+
+
+def get_v2_nodes():
+    return {key for key in config.SERVERS if is_agent_v2(key)}
