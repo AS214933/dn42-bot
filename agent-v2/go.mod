@@ -1,6 +1,6 @@
 module github.com/bingxin666/dn42-bot/agent-v2
 
-go 1.25.9
+go 1.25.0
 
 require (
 	github.com/getsentry/sentry-go v0.46.2
