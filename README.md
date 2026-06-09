@@ -1,3 +1,11 @@
+# Canary Warning
+
+你当前位于 **v2-six-phased-ice** 分支，这是我们将 Agent 从 Python 转为 Go 实现的分支。
+
+该分支上的内容可能存在极大的不稳定情况，极不推荐用于生产环境。
+
+**欢迎使用六向冰（Six Phased Ice）版本。**
+
 # Bingxin DN42 Bot
 
 **这是 [Potat0000/dn42-bot](https://github.com/Potat0000/dn42-bot) 的 Fork 版本**，根据我自己的需求添加了部分功能。
