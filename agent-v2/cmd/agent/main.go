@@ -99,6 +99,15 @@ func main() {
 			Now: time.Now,
 		})
 
+		r.Handle("/listpeers", &handler.ListPeersHandler{
+			ListWGASNs: func() ([]int, error) {
+				return listASNs("/etc/wireguard", "dn42-", ".conf")
+			},
+			ListBirdASNs: func() ([]int, error) {
+				return listASNs("/etc/bird/dn42_peers", "", ".conf")
+			},
+		})
+
 		r.Post("/ping", handler.PingHandler(runCmd))
 		r.Post("/trace", handler.TraceHandler(runCmd))
 		r.Post("/tcping", handler.TCPingHandler(runCmd))
