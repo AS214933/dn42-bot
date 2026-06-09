@@ -1,7 +1,9 @@
+import ipaddress
 import json
 from datetime import datetime, timezone
 
 import base
+import config
 import tools
 from base import bot, db_privilege
 from telebot.types import (
@@ -10,6 +12,7 @@ from telebot.types import (
     InlineKeyboardMarkup,
     ReplyKeyboardRemove,
 )
+from tools.peer_registry import add_peer, load_registry
 
 
 def _get_v2_nodes():
@@ -431,11 +434,201 @@ def _handle_export_asn_input(message, node):
         )
 
 
+def _validate_peer_entry(entry):
+    """Returns None if valid, or an error reason string."""
+    required = [
+        "node_id", "remote_asn", "remote_pubkey", "remote_endpoint",
+        "remote_lla", "wg_listen_port", "wg_interface_name", "wg_managed",
+    ]
+    for field in required:
+        if field not in entry or entry[field] is None:
+            return f"missing {field}"
+
+    node_id = entry["node_id"]
+    if node_id not in config.SERVERS:
+        return "node not found"
+
+    try:
+        int(entry["remote_asn"])
+    except (TypeError, ValueError):
+        return "invalid remote_asn"
+
+    pubkey = str(entry["remote_pubkey"])
+    if len(pubkey) < 40:
+        return "remote_pubkey too short"
+
+    lla = str(entry["remote_lla"])
+    try:
+        if ipaddress.ip_address(lla) not in ipaddress.ip_network("fe80::/10"):
+            return "remote_lla not in fe80::/10"
+    except ValueError:
+        return "invalid remote_lla"
+
+    mtu = entry.get("mtu")
+    if mtu is not None and mtu != "":
+        try:
+            mtu_int = int(mtu)
+            if not (576 <= mtu_int <= 9000):
+                return "mtu out of range (576-9000)"
+        except (TypeError, ValueError):
+            return "invalid mtu"
+
+    return None
+
+
+def _parse_import_json(raw_bytes):
+    """Returns (peers_list, error_string). error_string is None on success."""
+    try:
+        data = json.loads(raw_bytes)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        return None, f"Invalid JSON: {e}"
+
+    if isinstance(data, list):
+        return data, None
+    if isinstance(data, dict):
+        peers = data.get("peers")
+        if isinstance(peers, list):
+            return peers, None
+        return None, "Unrecognized format: missing 'peers' array."
+    return None, "Unrecognized format: expected JSON object or array."
+
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith("listpeers_import_"))
 def listpeers_import_callback(call):
+    node = call.data.split("_", 2)[2]
     chat_id = call.message.chat.id
+
+    if chat_id not in db_privilege:
+        bot.answer_callback_query(call.id, "No permission.", show_alert=True)
+        return
+
     bot.answer_callback_query(call.id)
+
+    msg = bot.send_message(
+        chat_id,
+        "Please upload a JSON file to import peers:\n"
+        "\u8bf7\u4e0a\u4f20 JSON \u6587\u4ef6\u4ee5\u5bfc\u5165 Peer\uff1a\n\n"
+        "Supported formats:\n\u652f\u6301\u7684\u683c\u5f0f\uff1a\n"
+        "  \u2022 Full wrapper: `{\"version\":1, \"peers\":[...]}`\n"
+        "  \u2022 Bare array: `[{...}, {...}]`\n\n"
+        "Type /cancel to abort.\n\u8f93\u5165 /cancel \u53d6\u6d88\u3002",
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    bot.register_next_step_handler(msg, _handle_import_file, node)
+
+
+def _handle_import_file(message, node):
+    chat_id = message.chat.id
+
+    if message.text and message.text.strip().lower() == "/cancel":
+        bot.send_message(
+            chat_id,
+            "Current operation has been cancelled.\n\u5f53\u524d\u64cd\u4f5c\u5df2\u88ab\u53d6\u6d88\u3002",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    if chat_id not in db_privilege:
+        return
+
+    if not message.document:
+        bot.send_message(
+            chat_id,
+            "No file received. Please upload a JSON file.\n"
+            "\u672a\u6536\u5230\u6587\u4ef6\u3002\u8bf7\u4e0a\u4f20 JSON \u6587\u4ef6\u3002",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    file_name = message.document.file_name or ""
+    if not file_name.lower().endswith(".json"):
+        bot.send_message(
+            chat_id,
+            "Only .json files are accepted.\n\u4ec5\u63a5\u53d7 .json \u6587\u4ef6\u3002",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        raw_bytes = bot.download_file(file_info.file_path)
+    except Exception:
+        bot.send_message(
+            chat_id,
+            "Failed to download the file.\n\u4e0b\u8f7d\u6587\u4ef6\u5931\u8d25\u3002",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    peers_list, parse_err = _parse_import_json(raw_bytes)
+    if parse_err:
+        bot.send_message(
+            chat_id,
+            f"Failed to parse file:\n{parse_err}\n"
+            f"\u89e3\u6790\u6587\u4ef6\u5931\u8d25\uff1a\n{parse_err}",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+
+    registry = load_registry()
+    imported = 0
+    skipped = 0
+    errors = []
+
+    for idx, entry in enumerate(peers_list):
+        if not isinstance(entry, dict):
+            errors.append({"index": idx, "reason": "not a JSON object"})
+            continue
+
+        err = _validate_peer_entry(entry)
+        if err:
+            node_id = entry.get("node_id", "?")
+            asn = entry.get("remote_asn", "?")
+            errors.append({"node_id": node_id, "asn": asn, "reason": err})
+            continue
+
+        node_id = entry["node_id"]
+        remote_asn = int(entry["remote_asn"])
+        key = (node_id, remote_asn)
+
+        if key in registry:
+            skipped += 1
+            continue
+
+        info = {k: v for k, v in entry.items() if k not in ("node_id", "remote_asn")}
+        if not info.get("status"):
+            info["status"] = "active"
+
+        add_peer(node_id, remote_asn, info)
+        imported += 1
+
+    total = len(peers_list)
+    result_lines = [
+        f"Import completed.\n\u5bfc\u5165\u5b8c\u6210\u3002",
+        f"",
+        f"  Total | \u603b\u8ba1: {total}",
+        f"  Imported | \u5bfc\u5165: {imported}",
+        f"  Skipped (duplicate) | \u8df3\u8fc7\uff08\u91cd\u590d\uff09: {skipped}",
+        f"  Errors | \u9519\u8bef: {len(errors)}",
+    ]
+
+    if errors:
+        result_lines.append("")
+        result_lines.append("Error details | \u9519\u8bef\u8be6\u60c5\uff1a")
+        for err in errors[:20]:
+            nid = err.get("node_id", err.get("index", "?"))
+            asn = err.get("asn", "")
+            reason = err.get("reason", "unknown")
+            if asn:
+                result_lines.append(f"  \u2022 {nid} / AS{asn}: {reason}")
+            else:
+                result_lines.append(f"  \u2022 [{nid}]: {reason}")
+        if len(errors) > 20:
+            result_lines.append(f"  ... and {len(errors) - 20} more")
+
     bot.send_message(
         chat_id,
-        "Import is not yet implemented.\n\u5bfc\u5165\u529f\u80fd\u5c1a\u672a\u5b9e\u73b0\u3002",
+        "\n".join(result_lines),
+        reply_markup=ReplyKeyboardRemove(),
     )
