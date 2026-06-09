@@ -26,8 +26,13 @@ The agent v1 used `agent_config.json` (JSON). Agent v2 uses `config.yaml` (YAML)
   "MY_DN42_ULA_ADDRESS": "fd2c:1323:4042::1",
   "MY_DN42_IPv4_ADDRESS": "172.23.246.1",
   "MY_WG_PUBLIC_KEY": "LUwqKS6QrCPv510Pwt1eAIiHACYDsbMjrkrbGTJfviU=",
+  "BIRD_CTL_PATH": "/var/run/bird/bird.ctl",
   "BIRD_TABLE_4": "master4",
-  "BIRD_TABLE_6": "master6"
+  "BIRD_TABLE_6": "master6",
+  "VNSTAT_AUTO_ADD": true,
+  "VNSTAT_AUTO_REMOVE": false,
+  "DEFAULT_MTU": 1420,
+  "SERVER_URL": "example.dn42"
 }
 ```
 
@@ -47,8 +52,13 @@ my_dn42_link_local_address: "fe80::1816"
 my_dn42_ula_address: "fd2c:1323:4042::1"
 my_dn42_ipv4_address: "172.23.246.1"
 my_wg_public_key: "LUwqKS6QrCPv510Pwt1eAIiHACYDsbMjrkrbGTJfviU="
+bird_ctl_path: "/var/run/bird/bird.ctl"
 bird_table_4: "master4"
 bird_table_6: "master6"
+vnstat_auto_add: true
+vnstat_auto_remove: false
+default_mtu: 1420
+server_url: "example.dn42"
 ```
 
 ### 2. Config Keys: Uppercase → snake_case
@@ -70,31 +80,24 @@ All config keys changed from `UPPER_CASE` to `snake_case`:
 | `MY_DN42_IPv4_ADDRESS` | `my_dn42_ipv4_address` |
 | `MY_WG_PUBLIC_KEY` | `my_wg_public_key` |
 | `SENTRY_DSN` | `sentry_dsn` |
+| `BIRD_CTL_PATH` | `bird_ctl_path` |
 | `BIRD_TABLE_4` | `bird_table_4` |
 | `BIRD_TABLE_6` | `bird_table_6` |
 | `VNSTAT_AUTO_ADD` | `vnstat_auto_add` |
 | `VNSTAT_AUTO_REMOVE` | `vnstat_auto_remove` |
+| `DEFAULT_MTU` | `default_mtu` |
+| `SERVER_URL` | `server_url` |
 
-### 3. New Keys in v2
-
-These keys are new in agent v2:
-
-| Key | Description |
-|-----|-------------|
-| `bird_ctl_path` | Path to the BIRD control socket. Defaults to `/var/run/bird/bird.ctl`. |
-| `default_mtu` | Default MTU for WireGuard tunnels. Defaults to `1420`. |
-| `server_url` | URL of the server this agent reports to. |
-
-### 4. Agent Version: 29 → 30
+### 3. Agent Version: 29 → 30
 
 The agent version bumped from 29 to 30. The server checks this version number. Make sure your server supports agent version 30 before upgrading.
 
-### 5. Binary: Python Script → Go Binary
+### 4. Binary: Python Script → Go Binary
 
 - **v1:** Python script requiring `aiohttp`, `sentry-sdk`, and `tcping` as separate dependencies.
 - **v2:** Statically compiled Go binary. No runtime dependencies needed beyond the system packages (WireGuard, BIRD, etc.).
 
-### 6. Dependencies
+### 5. Dependencies
 
 | v1 (Python) | v2 (Go) |
 |-------------|---------|
@@ -104,12 +107,12 @@ The agent version bumped from 29 to 30. The server checks this version number. M
 
 The Go binary bundles all HTTP and error tracking dependencies. No `pip install` step required.
 
-### 7. Config File Path
+### 6. Config File Path
 
 - **v1:** `agent/agent_config.json` (default)
 - **v2:** `config.yaml` (default), configurable via `CONFIG_PATH` env var
 
-### 8. Config File Mount
+### 7. Config File Mount
 
 In Docker Compose, update the volume mount:
 
