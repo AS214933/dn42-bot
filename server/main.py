@@ -196,6 +196,7 @@ base.cmd_list = {
     "remove": ("Remove a peer 移除一个 Peer", False),
     "info": ("Show your peer info and status 查看你的 Peer 信息及状态", False),
     "restart": ("Restart tunnel and bird session 重启隧道及 Bird 会话", False),
+    "listpeers": ("List and export peers on v2 nodes 列出并导出 v2 节点上的 Peer", False),
     "rank": ("Show DN42 global ranking 显示 DN42 总体排名", True),
     "stats": ("Show DN42 user basic info & statistics 显示 DN42 用户基本信息及数据", True),
     "peer_list": ("Show the peer situation of a user 显示某 DN42 用户的 Peer 情况", True),
