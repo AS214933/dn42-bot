@@ -353,16 +353,18 @@ def get_whois_info_from_registry(query: str) -> Optional[str]:
     if not os.path.exists(REGISTRY_PATH):
         return None
     
-    # Try to parse as ASN
+    # Try to parse as ASN. Avoid Python's permissive int parsing here so
+    # special whois queries like +04243517 pass through to remote whois.
     asn_str = query.upper()
     if asn_str.startswith("AS"):
         asn_str = asn_str[2:]
     
     try:
-        asn = int(asn_str)
-        file_path = find_asn_file(asn)
-        if file_path:
-            return _read_registry_file(file_path)
+        if asn_str.isdigit():
+            asn = int(asn_str)
+            file_path = find_asn_file(asn)
+            if file_path:
+                return _read_registry_file(file_path)
     except ValueError:
         pass
     

@@ -11,6 +11,24 @@ from commands.statistics.stats import get_stats
 from tools import registry
 
 
+def _parse_numeric_asn_query(query):
+    if not query:
+        raise ValueError
+    query = str(query)
+    if not query.isdigit():
+        raise ValueError
+    return int(query)
+
+
+def _parse_asn_query(query):
+    if not query:
+        raise ValueError
+    query = str(query)
+    if query.upper().startswith("AS"):
+        query = query[2:]
+    return _parse_numeric_asn_query(query)
+
+
 def get_extra_route(asn):
     route_result = ""
     route = {4: [], 6: []}
@@ -35,7 +53,7 @@ def _normalize_asn_input(whois_str):
         标准化后的字符串
     """
     try:
-        asn = int(whois_str)
+        asn = _parse_numeric_asn_query(whois_str)
         if asn < 10000:
             return f"424242{asn:04d}"
         elif 20000 <= asn < 30000:
@@ -63,7 +81,7 @@ def _do_whois_query(whois_str):
     
     # 对于 ASN 查询，也尝试加 AS 前缀
     try:
-        asn = int(whois_str)
+        asn = _parse_numeric_asn_query(whois_str)
         local_result = registry.get_whois_info_from_registry(f"AS{asn}")
         if local_result:
             return local_result, True
@@ -105,7 +123,7 @@ def _do_whois_query(whois_str):
     
     # 对于 ASN 查询，重试加 AS 前缀
     try:
-        asn = int(whois_str)
+        asn = _parse_numeric_asn_query(whois_str)
         if asn < 10000:
             retry_str = f"AS424242{asn:04d}"
         elif 20000 <= asn < 30000:
@@ -151,7 +169,7 @@ def _append_extra_info(whois_result, whois_str):
     为 ASN 查询结果追加 route 和 statistics 信息。
     """
     try:
-        asn = int(whois_str[2:]) if whois_str.upper().startswith("AS") else int(whois_str)
+        asn = _parse_asn_query(whois_str)
         if route_result := get_extra_route(asn):
             whois_result += f"\n\n{route_result}"
         if stats_result := get_stats(asn)[1]:
@@ -241,7 +259,7 @@ def another_whois(message):
         )
         return
     whois_str = message.text.split()[1]
-    allowed_punctuation = "_-./:"
+    allowed_punctuation = "_-./:+"
     if any(c not in (string.ascii_letters + string.digits + allowed_punctuation) for c in whois_str):
         bot.reply_to(
             message,
