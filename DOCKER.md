@@ -7,7 +7,7 @@ Docker Compose 示例：
 ```yaml
 services:
   server:
-    image: ghcr.io/bingxin666/dn42-bot/server:latest
+    image: ghcr.io/as214933/dn42-bot/server:latest
     container_name: dn42-bot-server
     volumes:
       - ./config.py:/app/config.py:ro
@@ -34,7 +34,7 @@ Docker Compose 示例：
 ```yaml
 services:
   agent:
-    image: ghcr.io/bingxin666/dn42-bot/agent:latest
+    image: ghcr.io/as214933/dn42-bot/agent:latest
     container_name: dn42-agent
     dns:
       - 172.20.0.53
