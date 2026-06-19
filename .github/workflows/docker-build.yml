@@ -19,9 +19,9 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_SERVER: ${{ github.repository }}/server
-  IMAGE_NAME_AGENT: ${{ github.repository }}/agent
-  IMAGE_NAME_AGENT_V2: ${{ github.repository }}/agent-v2
+  IMAGE_NAME_SERVER: as214933/dn42-bot/server
+  IMAGE_NAME_AGENT: as214933/dn42-bot/agent
+  IMAGE_NAME_AGENT_V2: as214933/dn42-bot/agent-v2
 
 jobs:
   build-server:

@@ -1,6 +1,6 @@
 import os
 
-REPOSITORY = "https://github.com/bingxin666/dn42-bot"
+REPOSITORY = "https://github.com/AS214933/dn42-bot"
 UPSTREAM = "https://github.com/Potat0000/dn42-bot"
 
 
