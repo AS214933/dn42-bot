@@ -2,11 +2,14 @@ package handler
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	ntrace "github.com/nxtrace/NTrace-core/trace"
 )
 
 func TestPingHandler_Success(t *testing.T) {
@@ -414,6 +417,65 @@ func TestTraceHandler_RetryArgsContainNFlag(t *testing.T) {
 	}
 }
 
+func TestTraceHandler_NativeNextTraceSuccess(t *testing.T) {
+	oldTraceroute := ntraceTraceroute
+	ntraceTraceroute = func(ctx context.Context, method ntrace.Method, config ntrace.Config) (*ntrace.Result, error) {
+		if method != ntrace.ICMPTrace {
+			t.Fatalf("method = %q, want %q", method, ntrace.ICMPTrace)
+		}
+		if config.MaxHops != 30 {
+			t.Fatalf("MaxHops = %d, want 30", config.MaxHops)
+		}
+		if config.NumMeasurements != 1 {
+			t.Fatalf("NumMeasurements = %d, want 1", config.NumMeasurements)
+		}
+		return &ntrace.Result{Hops: [][]ntrace.Hop{
+			{
+				{
+					Success: true,
+					Address: &net.IPAddr{IP: net.ParseIP("10.0.0.1")},
+					TTL:     1,
+					RTT:     1234 * time.Microsecond,
+				},
+			},
+			{
+				{
+					Success: false,
+					TTL:     2,
+				},
+			},
+			{
+				{
+					Success: true,
+					Address: &net.IPAddr{IP: net.ParseIP("172.20.0.1")},
+					TTL:     3,
+					RTT:     5678 * time.Microsecond,
+				},
+			},
+		}}, nil
+	}
+	t.Cleanup(func() { ntraceTraceroute = oldTraceroute })
+
+	handler := TraceHandler(nil)
+	req := httptest.NewRequest(http.MethodPost, "/trace", strings.NewReader("172.20.0.1"))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "traceroute to 172.20.0.1 (172.20.0.1)") {
+		t.Fatalf("expected traceroute header, got %q", body)
+	}
+	if !strings.Contains(body, " 1  10.0.0.1  1.234 ms") {
+		t.Fatalf("expected first hop, got %q", body)
+	}
+	if !strings.Contains(body, " 2  *") {
+		t.Fatalf("expected timeout hop, got %q", body)
+	}
+}
+
 func TestTCPingHandler_Success(t *testing.T) {
 	t.Parallel()
 	runner := func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error) {
@@ -439,6 +501,60 @@ func TestTCPingHandler_Success(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "Ping statistics") {
 		t.Errorf("expected ping stats in output, got %q", rec.Body.String())
+	}
+}
+
+func TestTCPingHandler_NativeSuccessHostPortFields(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatalf("split listener addr: %v", err)
+	}
+
+	handler := TCPingHandler(nil)
+	req := httptest.NewRequest(http.MethodPost, "/tcping", strings.NewReader("127.0.0.1 "+port))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Connected to 127.0.0.1:"+port) {
+		t.Fatalf("expected connected probes, got %q", body)
+	}
+	if !strings.Contains(body, "5 probes sent, 5 successful, 0 failed") {
+		t.Fatalf("expected success stats, got %q", body)
+	}
+}
+
+func TestTCPingHandler_NativeInvalidTarget(t *testing.T) {
+	t.Parallel()
+	handler := TCPingHandler(nil)
+	req := httptest.NewRequest(http.MethodPost, "/tcping", strings.NewReader("127.0.0.1 not-a-port"))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
 	}
 }
 

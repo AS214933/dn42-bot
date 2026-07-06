@@ -450,7 +450,7 @@ curl -X POST http://agent-host:54321/ping \
 
 ### POST /trace
 
-Runs `traceroute` against the specified target. Attempts DNS resolution first; if that times out, retries with `-n` (no DNS).
+Runs the built-in NTrace-core traceroute/MTR engine against the specified target. The server maps `/trace`, `/traceroute`, and `/mtr` commands to this endpoint.
 
 **Request Body (plain text):**
 ```
@@ -470,8 +470,8 @@ Trailing hops that respond with only `*` are counted and appended as a summary (
 - `403 Forbidden` — Invalid or missing token
 - `400 Bad Request` — Empty body
 - `405 Method Not Allowed` — Non-POST method
-- `408 Request Timeout` — Traceroute did not complete within 16 seconds (two 8s attempts)
-- `500 Internal Server Error` — traceroute failed with no output
+- `408 Request Timeout` — Built-in traceroute did not complete within 8 seconds
+- `500 Internal Server Error` — Built-in traceroute failed, commonly because the process lacks root or `CAP_NET_RAW`
 
 **Example:**
 ```bash
@@ -484,7 +484,7 @@ curl -X POST http://agent-host:54321/trace \
 
 ### POST /tcping
 
-Runs `tcping` (5 probes, no color) against the specified target.
+Runs the built-in TCPing implementation against the specified target. It sends 5 TCP connect probes using Go's `net.Dialer`; no external `tcping` command is required.
 
 **Request Body (plain text):**
 ```
@@ -493,20 +493,20 @@ Runs `tcping` (5 probes, no color) against the specified target.
 
 **Response (plain text):**
 ```
-172.20.x.x 22 port open, 1.234 sec
-172.20.x.x 22 port open, 1.567 sec
+Connected to 172.20.x.x:22: seq=1 time=1.23 ms
+Connected to 172.20.x.x:22: seq=2 time=1.56 ms
 ...
-```
 
-Trailing noise lines matching `Ping stopped.` or `Ping interrupted.` are stripped.
+Ping statistics for 172.20.x.x:22
+ 5 probes sent, 5 successful, 0 failed.
+```
 
 **Status Codes:**
 - `200 OK` — TCPing output
 - `403 Forbidden` — Invalid or missing token
-- `400 Bad Request` — Empty body
+- `400 Bad Request` — Empty body or invalid host/port
 - `405 Method Not Allowed` — Non-POST method
 - `408 Request Timeout` — TCPing did not complete within 10 seconds
-- `500 Internal Server Error` — tcping command failed with no output
 
 **Example:**
 ```bash

@@ -41,6 +41,7 @@ services:
       - 1.1.1.1
     network_mode: host
     cap_add:
+      - NET_RAW
       - NET_ADMIN
       - SYS_ADMIN
     devices:
@@ -57,6 +58,8 @@ services:
 ```
 
 `config.yaml` 文件请参考 `agent-v2/config.example.yaml` 进行修改。
+
+Agent v2 已内置基于 NTrace-core 的 traceroute/MTR 与基于 Go `net.Dialer` 的 TCPing。裸机部署时无需额外安装 `traceroute`、`mtr` 或 `tcping`；但 traceroute/MTR 需要 root 或 `CAP_NET_RAW` 权限。
 
 ### IGP 拓扑图
 

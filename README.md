@@ -188,9 +188,9 @@ Config items are located at `agent-v2/config.yaml`. See [agent-docs/config.md](a
 - `ipv4_nat`: Whether the IPv4 is behind NAT
 - `cn`: Whether allowed to peer with Chinese Mainland
 
-#### TCPing
+#### Trace / TCPing
 
-You should install a `tcping` command in the system. Currently, the agent only supports [pouriyajamshidi/tcping](https://github.com/pouriyajamshidi/tcping). You can modify the `tcping_test()` function to use other TCPing tools.
+Agent v2 includes traceroute/MTR support through `github.com/nxtrace/NTrace-core` and TCPing support through Go's `net.Dialer`. You do not need to install external `traceroute`, `mtr`, or `tcping` commands. Built-in traceroute/MTR requires root or `CAP_NET_RAW` on bare metal.
 
 ## Have a try
 

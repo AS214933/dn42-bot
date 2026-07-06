@@ -94,7 +94,7 @@ The agent version bumped from 29 to 30. The server checks this version number. M
 
 ### 4. Binary: Python Script → Go Binary
 
-- **v1:** Python script requiring `aiohttp`, `sentry-sdk`, and `tcping` as separate dependencies.
+- **v1:** Python script requiring `aiohttp`, `sentry-sdk`, `traceroute`, and `tcping` as separate dependencies.
 - **v2:** Statically compiled Go binary. No runtime dependencies needed beyond the system packages (WireGuard, BIRD, etc.).
 
 ### 5. Dependencies
@@ -103,9 +103,10 @@ The agent version bumped from 29 to 30. The server checks this version number. M
 |-------------|---------|
 | `aiohttp` | `go-chi/chi` (HTTP router, built into binary) |
 | `sentry-sdk` | `sentry-go` (error tracking, built into binary) |
-| `tcping` (system binary) | `tcping` (built from source in Docker image) |
+| `traceroute` / `mtr` system binaries | `github.com/nxtrace/NTrace-core` (built into the agent binary, GPL-3.0) |
+| `tcping` system binary | Go `net.Dialer` TCP connect probes (built into the agent binary) |
 
-The Go binary bundles all HTTP and error tracking dependencies. No `pip install` step required.
+The Go binary bundles HTTP, error tracking, traceroute/MTR, and TCPing support. No `pip install`, `traceroute`, `mtr`, or `tcping` installation is required. Built-in traceroute/MTR still needs root or `CAP_NET_RAW` on bare metal.
 
 ### 6. Config File Path
 

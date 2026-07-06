@@ -109,8 +109,8 @@ func main() {
 		})
 
 		r.Post("/ping", handler.PingHandler(runCmd))
-		r.Post("/trace", handler.TraceHandler(runCmd))
-		r.Post("/tcping", handler.TCPingHandler(runCmd))
+		r.Post("/trace", handler.TraceHandler(nil))
+		r.Post("/tcping", handler.TCPingHandler(nil))
 
 		r.Handle("/route", handler.RouteHandler(cfg, handler.NewBirdcRunner()))
 		r.Handle("/path", handler.PathHandler(cfg, handler.NewBirdcRunner()))

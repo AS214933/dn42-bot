@@ -7,8 +7,7 @@ This guide covers deploying the DN42 bot agent using Docker or Docker Compose.
 The agent ships as a multi-stage Dockerfile:
 
 1. **Go builder** — compiles the agent binary from source.
-2. **tcping builder** — builds [tcping](https://github.com/pouriyajamshidi/tcping) from source.
-3. **Debian runtime** — slim Debian image with all runtime dependencies.
+2. **Debian runtime** — slim Debian image with all runtime dependencies.
 
 Build the image:
 
@@ -35,6 +34,7 @@ services:
       - 1.1.1.1
     network_mode: host
     cap_add:
+      - NET_RAW
       - NET_ADMIN
       - SYS_ADMIN
     devices:
@@ -84,12 +84,14 @@ The agent requires elevated privileges for network operations:
 
 ```yaml
 cap_add:
+  - NET_RAW
   - NET_ADMIN
   - SYS_ADMIN
 devices:
   - /dev/net/tun:/dev/net/tun
 ```
 
+- **NET_RAW** — needed by the built-in NTrace-core traceroute/MTR engine for raw ICMP sockets.
 - **NET_ADMIN** — needed to create/configure WireGuard interfaces and manage network routes.
 - **SYS_ADMIN** — needed for some WireGuard operations.
 - **/dev/net/tun** — TUN device for WireGuard tunnel creation.
@@ -108,10 +110,10 @@ The Docker image includes these packages (installed automatically):
 - `wireguard-tools` — WireGuard utilities (`wg`, `wg-quick`)
 - `iproute2` — network configuration tools (`ip`)
 - `iputils-ping` — ICMP ping
-- `traceroute` — path tracing
 - `vnstat` — network traffic monitoring
 - `ca-certificates` — TLS certificate bundle
-- `tcping` — TCP connectivity testing (built from source)
+
+Traceroute/MTR is built into the agent binary via `github.com/nxtrace/NTrace-core` (GPL-3.0). TCPing is built into the agent binary using Go's `net.Dialer`; no external `traceroute`, `mtr`, or `tcping` command is required for Docker or bare-metal deployments.
 
 ## Systemd Service (Non-Docker)
 
@@ -135,6 +137,12 @@ WantedBy=multi-user.target
 ```
 
 Place the compiled binary and config in `/opt/dn42-agent/`.
+
+For bare-metal deployments, run the service as root or grant the binary `CAP_NET_RAW` so built-in traceroute/MTR can open raw sockets:
+
+```bash
+sudo setcap cap_net_raw+ep /opt/dn42-agent/agent
+```
 
 ## Health Checks
 
