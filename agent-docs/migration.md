@@ -138,7 +138,7 @@ volumes:
    ```
 
 4. **Update Docker Compose** (if applicable):
-   - Change the image tag to `agent:latest` or the v2 image.
+   - Change the image tag to `agent-v2:latest`.
    - Update the volume mount from `agent_config.json` to `config.yaml`.
    - The `CONFIG_PATH` environment variable defaults to `config.yaml`, so it usually doesn't need to be set explicitly.
 
@@ -150,7 +150,7 @@ volumes:
 
 ## Backward Compatibility
 
-The HTTP API contract is **unchanged** between v1 and v2. The server communicates with the agent using the same endpoints and request/response formats:
+Agent v2 implements the same HTTP API contract that the server uses with agent v1:
 
 - `POST /version`
 - `POST /config/get`
@@ -166,6 +166,8 @@ The HTTP API contract is **unchanged** between v1 and v2. The server communicate
 - `POST /route`
 - `POST /path`
 - `POST /igp_topology`
+
+Agent v2 also adds `POST /listpeers` for the server's v2-only peer import/export workflow.
 
 No server-side changes are needed to support agent v2 beyond ensuring the `API_TOKEN` matches.
 

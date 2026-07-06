@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
@@ -9,13 +10,13 @@ import (
 )
 
 type PrePeerResponse struct {
-	Existed     int             `json:"existed"`
-	Max         int             `json:"max"`
-	Requirement int             `json:"requirement"`
-	Open        bool            `json:"open"`
+	Existed     int              `json:"existed"`
+	Max         int              `json:"max"`
+	Requirement int              `json:"requirement"`
+	Open        bool             `json:"open"`
 	NetSupport  model.NetSupport `json:"net_support"`
-	LLA         string          `json:"lla"`
-	Msg         string          `json:"msg"`
+	LLA         string           `json:"lla"`
+	Msg         string           `json:"msg"`
 }
 
 type PrePeerHandler struct {
@@ -24,9 +25,13 @@ type PrePeerHandler struct {
 }
 
 func (h *PrePeerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	wgCount, _, err := h.GetPeerNum()
+	wgCount, birdCount, err := h.GetPeerNum()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if wgCount != birdCount {
+		http.Error(w, fmt.Sprintf("wireguard and bird config count mismatch: wg=%d bird=%d", wgCount, birdCount), http.StatusInternalServerError)
 		return
 	}
 

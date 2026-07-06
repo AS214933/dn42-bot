@@ -86,6 +86,28 @@ func TestPrePeer_GetPeerNumError(t *testing.T) {
 	}
 }
 
+func TestPrePeer_ConfigCountMismatch(t *testing.T) {
+	t.Parallel()
+	cfg := prePeerTestConfig()
+	h := &PrePeerHandler{
+		Cfg: cfg,
+		GetPeerNum: func() (int, int, error) {
+			return 3, 2, nil
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/pre_peer", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+	if got := rec.Body.String(); got == "" || got == "{}\n" {
+		t.Fatalf("expected mismatch error body, got %q", got)
+	}
+}
+
 func TestPrePeer_ZeroPeers(t *testing.T) {
 	t.Parallel()
 	cfg := prePeerTestConfig()

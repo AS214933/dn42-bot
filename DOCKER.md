@@ -34,7 +34,7 @@ Docker Compose 示例：
 ```yaml
 services:
   agent:
-    image: ghcr.io/as214933/dn42-bot/agent:latest
+    image: ghcr.io/as214933/dn42-bot/agent-v2:latest
     container_name: dn42-agent
     dns:
       - 172.20.0.53
@@ -51,10 +51,12 @@ services:
       - /etc/bird/dn42_peers:/etc/bird/dn42_peers
       - /etc/bird/config:/etc/bird/config
       - /var/run/bird/bird.ctl:/var/run/bird/bird.ctl # 修改为你的 bird.ctl 路径
-      - ./agent_config.json:/app/agent_config.json:ro
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - CONFIG_PATH=/app/config.yaml
 ```
 
-`agent_config.json` 文件请参考 `agent/agent_config.example.json` 进行修改。
+`config.yaml` 文件请参考 `agent-v2/config.example.yaml` 进行修改。
 
 ### IGP 拓扑图
 

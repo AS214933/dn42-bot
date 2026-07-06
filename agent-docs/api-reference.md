@@ -1,6 +1,6 @@
 # Agent API Reference
 
-All endpoints use POST method. The agent listens on the address configured in `config.yaml` (default: `0.0.0.0:8080`).
+All endpoints use POST method. The agent listens on the address configured in `config.yaml` (default: `0.0.0.0:54321`).
 
 ## Authentication
 
@@ -31,7 +31,7 @@ Returns the agent version number. No authentication required.
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/version
+curl -X POST http://agent-host:54321/version
 ```
 
 Response: `30`
@@ -77,7 +77,7 @@ Available keys: `DEFAULT_MTU`, `OPEN`, `MAX_PEERS`, `MIN_PEER_REQUIREMENT`, `EXT
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/config/get \
+curl -X POST http://agent-host:54321/config/get \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -H "Content-Type: application/json" \
   -d '{"keys": ["DEFAULT_MTU", "OPEN"]}'
@@ -85,7 +85,7 @@ curl -X POST http://agent-host:8080/config/get \
 
 To get all fields:
 ```bash
-curl -X POST http://agent-host:8080/config/get \
+curl -X POST http://agent-host:54321/config/get \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token"
 ```
 
@@ -130,11 +130,11 @@ Returns pre-peer information: current peer count, limits, network support, and e
 **Status Codes:**
 - `200 OK` — Success
 - `403 Forbidden` — Invalid or missing token
-- `500 Internal Server Error` — Failed to count peers
+- `500 Internal Server Error` — Failed to count peers, or WireGuard/BIRD peer config counts do not match
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/pre_peer \
+curl -X POST http://agent-host:54321/pre_peer \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token"
 ```
 
@@ -213,7 +213,7 @@ The body contains a single integer: the peer's ASN.
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/info \
+curl -X POST http://agent-host:54321/info \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -d "4242421234"
 ```
@@ -265,7 +265,7 @@ Creates or updates a WireGuard and BIRD peer configuration, brings up the WireGu
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/peer \
+curl -X POST http://agent-host:54321/peer \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -H "Content-Type: application/json" \
   -d '{
@@ -300,7 +300,7 @@ The body contains a single integer: the ASN to remove.
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/remove \
+curl -X POST http://agent-host:54321/remove \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -d "4242421234"
 ```
@@ -327,7 +327,7 @@ The body contains a single integer: the ASN to restart.
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/restart \
+curl -X POST http://agent-host:54321/restart \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -d "4242421234"
 ```
@@ -376,8 +376,39 @@ Possible issue messages:
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/errorlist \
+curl -X POST http://agent-host:54321/errorlist \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token"
+```
+
+---
+
+### POST /listpeers
+
+Returns the sorted union of peer ASNs found in WireGuard and BIRD config directories. This is an agent v2 extension used by the server's `/listpeers` import/export workflow.
+
+**Request Body:** Empty or `{}`.
+
+**Response (JSON):**
+```json
+{
+  "asns": [4242421234, 4242425678]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `asns` | array | Sorted ASN list from `/etc/wireguard/dn42-*.conf` and `/etc/bird/dn42_peers/*.conf` |
+
+**Status Codes:**
+- `200 OK` — Success
+- `403 Forbidden` — Invalid or missing token
+- `500 Internal Server Error` — Failed to list WireGuard or BIRD config directories
+
+**Example:**
+```bash
+curl -X POST http://agent-host:54321/listpeers \
+  -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
+  -d '{}'
 ```
 
 ---
@@ -410,7 +441,7 @@ PING 172.20.x.x (172.20.x.x) 56(84) bytes of data.
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/ping \
+curl -X POST http://agent-host:54321/ping \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -d "172.20.x.x"
 ```
@@ -444,7 +475,7 @@ Trailing hops that respond with only `*` are counted and appended as a summary (
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/trace \
+curl -X POST http://agent-host:54321/trace \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -d "172.20.x.x"
 ```
@@ -479,7 +510,7 @@ Trailing noise lines matching `Ping stopped.` or `Ping interrupted.` are strippe
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/tcping \
+curl -X POST http://agent-host:54321/tcping \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -d "172.20.x.x 22"
 ```
@@ -508,7 +539,7 @@ The agent selects the IPv4 or IPv6 BIRD table based on whether the target contai
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/route \
+curl -X POST http://agent-host:54321/route \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -d "fd42:xxxx::2"
 ```
@@ -536,7 +567,7 @@ fd42:xxxx::2
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/path \
+curl -X POST http://agent-host:54321/path \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -d "fd42:xxxx::2"
 ```
@@ -586,7 +617,7 @@ Returns the Babel IGP topology: interfaces and neighbors.
 
 **Example:**
 ```bash
-curl -X POST http://agent-host:8080/igp_topology \
+curl -X POST http://agent-host:54321/igp_topology \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token"
 ```
 

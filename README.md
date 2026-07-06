@@ -41,10 +41,10 @@
 | HIDDEN_ENDPOINT_SERVERS | (Optional) Servers whose WireGuard endpoint should not be revealed to users.              |
 | BANNED_COMMANDS | (Optional) A list of commands that are banned to use. E.g. `["ping", "traceroute"]` will ban `/ping` and `/traceroute` commands. |
 
-`agent/agent_config.json`：
+`agent-v2/config.yaml`：
 | Config Key                 | Description                                                  |
 | -------------------------- | ------------------------------------------------------------ |
-| DEFAULT_MTU                | (Optional) Default MTU for this agent's peers (if not specified by peer) |
+| `default_mtu`              | (Optional) Default MTU for this agent's peers (if not specified by peer) |
 
 ## TODO
  - [ ] 支持节点审批
@@ -155,33 +155,33 @@ Privileged users can use `/whoami <New AS>` to directly modify their identity, u
 
 ### Agent
 
-The agent directory contains the code for the "agent" for tg-bot server.
+The `agent-v2` directory contains the Go agent for the tg-bot server. The legacy Python agent remains under `agent` for reference.
 
 #### Config
 
-Config items are located at `agent/agent_config.json`.
+Config items are located at `agent-v2/config.yaml`. See [agent-docs/config.md](agent-docs/config.md) for the full reference.
 
 | Config Key                 | Description                                                  |
 | -------------------------- | ------------------------------------------------------------ |
-| HOST                       | API listen host                                              |
-| PORT                       | API Port                                                     |
-| SECRET                     | API Token                                                    |
-| OPEN                       | Whether open peer                                            |
-| MAX_PEERS                  | Maximum number of Peer (0 for no limit)                      |
-| MIN_PEER_REQUIREMENT       | Minimum number of peers required to peer with this node      |
-| NET_SUPPORT                | Net supported by this agent                                  |
-| EXTRA_MSG                  | Extra message of this agent                                  |
-| MY_DN42_LINK_LOCAL_ADDRESS | The DN42 IPv6 Link-Local Address of this agent               |
-| MY_DN42_ULA_ADDRESS        | The DN42 IPv6 ULA Address of this agent                      |
-| MY_DN42_IPv4_ADDRESS       | The DN42 IPv4 Address of this agent                          |
-| MY_WG_PUBLIC_KEY           | The WireGuard Public Key of this agent                       |
-| SENTRY_DSN                 | Sentry DSN. Leave empty to disable Sentry exception tracking |
-| BIRD_TABLE_4               | The name of the BIRD table for IPv4                          |
-| BIRD_TABLE_6               | The name of the BIRD table for IPv6                          |
-| VNSTAT_AUTO_ADD            | Whether to automatically add tunnel interface to vnstat      |
-| VNSTAT_AUTO_REMOVE         | Whether to automatically remove tunnel interface from vnstat |
+| `host`                     | API listen host                                              |
+| `port`                     | API port                                                     |
+| `secret`                   | API token                                                    |
+| `open`                     | Whether open peer                                            |
+| `max_peers`                | Maximum number of Peer (0 for no limit)                      |
+| `min_peer_requirement`     | Minimum number of peers required to peer with this node      |
+| `net_support`              | Net supported by this agent                                  |
+| `extra_msg`                | Extra message of this agent                                  |
+| `my_dn42_link_local_address` | The DN42 IPv6 Link-Local Address of this agent             |
+| `my_dn42_ula_address`      | The DN42 IPv6 ULA Address of this agent                      |
+| `my_dn42_ipv4_address`     | The DN42 IPv4 Address of this agent                          |
+| `my_wg_public_key`         | The WireGuard Public Key of this agent                       |
+| `sentry_dsn`               | Sentry DSN. Leave empty to disable Sentry exception tracking |
+| `bird_table_4`             | The name of the BIRD table for IPv4                          |
+| `bird_table_6`             | The name of the BIRD table for IPv6                          |
+| `vnstat_auto_add`          | Whether to automatically add tunnel interface to vnstat      |
+| `vnstat_auto_remove`       | Whether to automatically remove tunnel interface from vnstat |
 
-`NET_SUPPORT` item has following subconfig items:
+`net_support` item has following subconfig items:
 
 - `ipv4`: Whether support IPv4
 - `ipv6`: Whether support IPv6

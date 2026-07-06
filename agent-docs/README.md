@@ -54,6 +54,7 @@ The DN42 bot agent runs on each peering node. It manages WireGuard tunnels, BIRD
 
 | Document | Contents |
 |----------|----------|
+| [api-reference.md](api-reference.md) | HTTP API endpoints, request/response formats, and status codes |
 | [config.md](config.md) | Full config reference with all YAML keys, types, defaults, and conditional logic |
 | [deployment.md](deployment.md) | Docker build, Docker Compose, volume mounts, capabilities, and systemd setup |
 | [migration.md](migration.md) | Migration guide from the Python agent (v1) to the Go agent (v2) |

@@ -169,7 +169,7 @@ func countConfFiles(dir, prefix string) (int, error) {
 	count := 0
 	for _, e := range entries {
 		name := e.Name()
-		if !strings.HasSuffix(name, ".conf") {
+		if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".conf") {
 			continue
 		}
 		numStr := name[len(prefix) : len(name)-5]

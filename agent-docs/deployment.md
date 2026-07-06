@@ -20,7 +20,7 @@ docker build -t dn42-agent .
 Or pull the prebuilt image:
 
 ```bash
-docker pull ghcr.io/bingxin666/dn42-bot/agent:latest
+docker pull ghcr.io/as214933/dn42-bot/agent-v2:latest
 ```
 
 ## Docker Compose
@@ -28,7 +28,7 @@ docker pull ghcr.io/bingxin666/dn42-bot/agent:latest
 ```yaml
 services:
   agent:
-    image: ghcr.io/bingxin666/dn42-bot/agent:latest
+    image: ghcr.io/as214933/dn42-bot/agent-v2:latest
     container_name: dn42-agent
     dns:
       - 172.20.0.53
