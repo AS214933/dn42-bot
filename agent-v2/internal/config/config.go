@@ -3,7 +3,10 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
+	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -16,49 +19,51 @@ type NetSupport struct {
 }
 
 type Config struct {
-	Host                    string     `yaml:"host"`
-	Port                    int        `yaml:"port"`
-	Secret                  string     `yaml:"secret"`
-	Open                    bool       `yaml:"open"`
-	MaxPeers                int        `yaml:"max_peers"`
-	MinPeerRequirement      int        `yaml:"min_peer_requirement"`
-	NetSupport              NetSupport `yaml:"net_support"`
-	ExtraMsg                string     `yaml:"extra_msg"`
-	MyDN42LinkLocalAddress  net.IP     `yaml:"my_dn42_link_local_address"`
-	MyDN42ULAAddress        net.IP     `yaml:"my_dn42_ula_address"`
-	MyDN42IPv4Address       net.IP     `yaml:"my_dn42_ipv4_address"`
-	MyWGPublicKey           string     `yaml:"my_wg_public_key"`
-	SentryDSN               string     `yaml:"sentry_dsn"`
-	BirdCtlPath             string     `yaml:"bird_ctl_path"`
-	BirdTable4              string     `yaml:"bird_table_4"`
-	BirdTable6              string     `yaml:"bird_table_6"`
-	VnstatAutoAdd           bool       `yaml:"vnstat_auto_add"`
-	VnstatAutoRemove        bool       `yaml:"vnstat_auto_remove"`
-	DefaultMTU              int        `yaml:"default_mtu"`
-	ServerURL               string     `yaml:"server_url"`
+	Host                   string     `yaml:"host"`
+	Port                   int        `yaml:"port"`
+	Secret                 string     `yaml:"secret"`
+	Open                   bool       `yaml:"open"`
+	MaxPeers               int        `yaml:"max_peers"`
+	MinPeerRequirement     int        `yaml:"min_peer_requirement"`
+	NetSupport             NetSupport `yaml:"net_support"`
+	ExtraMsg               string     `yaml:"extra_msg"`
+	MyDN42LinkLocalAddress net.IP     `yaml:"my_dn42_link_local_address"`
+	MyDN42ULAAddress       net.IP     `yaml:"my_dn42_ula_address"`
+	MyDN42IPv4Address      net.IP     `yaml:"my_dn42_ipv4_address"`
+	MyWGPublicKey          string     `yaml:"my_wg_public_key"`
+	SentryDSN              string     `yaml:"sentry_dsn"`
+	BirdCtlPath            string     `yaml:"bird_ctl_path"`
+	BirdTable4             string     `yaml:"bird_table_4"`
+	BirdTable6             string     `yaml:"bird_table_6"`
+	VnstatAutoAdd          bool       `yaml:"vnstat_auto_add"`
+	VnstatAutoRemove       bool       `yaml:"vnstat_auto_remove"`
+	DefaultMTU             int        `yaml:"default_mtu"`
+	ServerURL              string     `yaml:"server_url"`
+	DNSServers             []string   `yaml:"dns_servers"`
 }
 
 type rawConfig struct {
-	Host                    string     `yaml:"host"`
-	Port                    *int       `yaml:"port"`
-	Secret                  string     `yaml:"secret"`
-	Open                    bool       `yaml:"open"`
-	MaxPeers                *int       `yaml:"max_peers"`
-	MinPeerRequirement      *int       `yaml:"min_peer_requirement"`
-	NetSupport              NetSupport `yaml:"net_support"`
-	ExtraMsg                *string    `yaml:"extra_msg"`
-	MyDN42LinkLocalAddress  string     `yaml:"my_dn42_link_local_address"`
-	MyDN42ULAAddress        string     `yaml:"my_dn42_ula_address"`
-	MyDN42IPv4Address       string     `yaml:"my_dn42_ipv4_address"`
-	MyWGPublicKey           string     `yaml:"my_wg_public_key"`
-	SentryDSN               *string    `yaml:"sentry_dsn"`
-	BirdCtlPath             *string    `yaml:"bird_ctl_path"`
-	BirdTable4              string     `yaml:"bird_table_4"`
-	BirdTable6              string     `yaml:"bird_table_6"`
-	VnstatAutoAdd           bool       `yaml:"vnstat_auto_add"`
-	VnstatAutoRemove        *bool      `yaml:"vnstat_auto_remove"`
-	DefaultMTU              *int       `yaml:"default_mtu"`
-	ServerURL               *string    `yaml:"server_url"`
+	Host                   string     `yaml:"host"`
+	Port                   *int       `yaml:"port"`
+	Secret                 string     `yaml:"secret"`
+	Open                   bool       `yaml:"open"`
+	MaxPeers               *int       `yaml:"max_peers"`
+	MinPeerRequirement     *int       `yaml:"min_peer_requirement"`
+	NetSupport             NetSupport `yaml:"net_support"`
+	ExtraMsg               *string    `yaml:"extra_msg"`
+	MyDN42LinkLocalAddress string     `yaml:"my_dn42_link_local_address"`
+	MyDN42ULAAddress       string     `yaml:"my_dn42_ula_address"`
+	MyDN42IPv4Address      string     `yaml:"my_dn42_ipv4_address"`
+	MyWGPublicKey          string     `yaml:"my_wg_public_key"`
+	SentryDSN              *string    `yaml:"sentry_dsn"`
+	BirdCtlPath            *string    `yaml:"bird_ctl_path"`
+	BirdTable4             string     `yaml:"bird_table_4"`
+	BirdTable6             string     `yaml:"bird_table_6"`
+	VnstatAutoAdd          bool       `yaml:"vnstat_auto_add"`
+	VnstatAutoRemove       *bool      `yaml:"vnstat_auto_remove"`
+	DefaultMTU             *int       `yaml:"default_mtu"`
+	ServerURL              *string    `yaml:"server_url"`
+	DNSServers             []string   `yaml:"dns_servers"`
 }
 
 func Load(path string) (*Config, error) {
@@ -120,6 +125,11 @@ func Load(path string) (*Config, error) {
 		serverURL = *raw.ServerURL
 	}
 
+	dnsServers, err := normalizeDNSServers(raw.DNSServers)
+	if err != nil {
+		return nil, err
+	}
+
 	linkLocalAddr := net.ParseIP(raw.MyDN42LinkLocalAddress)
 	if linkLocalAddr == nil {
 		return nil, fmt.Errorf("invalid my_dn42_link_local_address: %q", raw.MyDN42LinkLocalAddress)
@@ -164,7 +174,52 @@ func Load(path string) (*Config, error) {
 		VnstatAutoRemove:       vnstatAutoRemove,
 		DefaultMTU:             defaultMTU,
 		ServerURL:              serverURL,
+		DNSServers:             dnsServers,
 	}
 
 	return cfg, nil
+}
+
+func normalizeDNSServers(servers []string) ([]string, error) {
+	result := make([]string, 0, len(servers))
+	for _, server := range servers {
+		normalized, err := normalizeDNSServer(server)
+		if err != nil {
+			return nil, err
+		}
+		if normalized != "" {
+			result = append(result, normalized)
+		}
+	}
+	return result, nil
+}
+
+func normalizeDNSServer(server string) (string, error) {
+	trimmed := strings.TrimSpace(server)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	if addrPort, err := netip.ParseAddrPort(trimmed); err == nil {
+		if addrPort.Port() == 0 {
+			return "", fmt.Errorf("invalid dns server %q: invalid port", server)
+		}
+		return addrPort.String(), nil
+	}
+	if addr, err := netip.ParseAddr(trimmed); err == nil {
+		return net.JoinHostPort(addr.String(), "53"), nil
+	}
+
+	host, port, err := net.SplitHostPort(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("invalid dns server %q: expected IP, IP:port, or [IPv6]:port", server)
+	}
+	if _, err := netip.ParseAddr(host); err != nil {
+		return "", fmt.Errorf("invalid dns server %q: DNS server must be an IP address", server)
+	}
+	portNum, err := strconv.Atoi(port)
+	if err != nil || portNum <= 0 || portNum > 65535 {
+		return "", fmt.Errorf("invalid dns server %q: invalid port", server)
+	}
+	return net.JoinHostPort(host, port), nil
 }

@@ -190,7 +190,7 @@ Config items are located at `agent-v2/config.yaml`. See [agent-docs/config.md](a
 
 #### Trace / TCPing
 
-Agent v2 includes traceroute/MTR support through `github.com/nxtrace/NTrace-core` and TCPing support through Go's `net.Dialer`. You do not need to install external `traceroute`, `mtr`, or `tcping` commands. Built-in traceroute/MTR requires root or `CAP_NET_RAW` on bare metal.
+Agent v2 includes traceroute/MTR support through `github.com/nxtrace/NTrace-core` and TCPing support through Go's `net.Dialer`. You do not need to install external `traceroute`, `mtr`, or `tcping` commands. Built-in traceroute/MTR requires root or `CAP_NET_RAW` on bare metal. Set `dns_servers` in `config.yaml` to make built-in `ping`, `trace`, and `tcping` resolve hostnames through explicit DNS servers instead of the system resolver.
 
 ## Have a try
 

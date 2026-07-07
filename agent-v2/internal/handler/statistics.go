@@ -19,7 +19,8 @@ type CommandRunner func(ctx context.Context, name string, args []string, timeout
 
 var ntraceTraceroute = ntrace.TracerouteWithContext
 
-func PingHandler(runner CommandRunner) http.HandlerFunc {
+func PingHandler(runner CommandRunner, resolvers ...IPResolver) http.HandlerFunc {
+	resolver := optionalResolver(resolvers)
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -34,7 +35,13 @@ func PingHandler(runner CommandRunner) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 		defer cancel()
 
-		output, err := runner(ctx, "ping", []string{"-c", "5", "-w", "6", target}, 8*time.Second)
+		commandTarget, err := resolveCommandTarget(ctx, resolver, target)
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		output, err := runner(ctx, "ping", []string{"-c", "5", "-w", "6", commandTarget}, 8*time.Second)
 		if err != nil && ctx.Err() == context.DeadlineExceeded {
 			http.Error(w, "Request Timeout", http.StatusRequestTimeout)
 			return
@@ -49,7 +56,8 @@ func PingHandler(runner CommandRunner) http.HandlerFunc {
 	}
 }
 
-func TraceHandler(runner CommandRunner) http.HandlerFunc {
+func TraceHandler(runner CommandRunner, resolvers ...IPResolver) http.HandlerFunc {
+	resolver := optionalResolver(resolvers)
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -61,7 +69,7 @@ func TraceHandler(runner CommandRunner) http.HandlerFunc {
 			return
 		}
 
-		output, err := runTrace(r.Context(), runner, target)
+		output, err := runTrace(r.Context(), runner, target, resolver)
 		if err != nil && output == "" {
 			if err == errTraceTimeout {
 				http.Error(w, "Request Timeout", http.StatusRequestTimeout)
@@ -80,9 +88,9 @@ func TraceHandler(runner CommandRunner) http.HandlerFunc {
 
 var errTraceTimeout = fmt.Errorf("trace timeout")
 
-func runTrace(ctx context.Context, runner CommandRunner, target string) (string, error) {
+func runTrace(ctx context.Context, runner CommandRunner, target string, resolver IPResolver) (string, error) {
 	if runner == nil {
-		return runNativeTrace(ctx, target)
+		return runNativeTrace(ctx, target, resolver)
 	}
 	return runCommandTrace(ctx, runner, target)
 }
@@ -105,11 +113,11 @@ func runCommandTrace(ctx context.Context, runner CommandRunner, target string) (
 	return output, err
 }
 
-func runNativeTrace(ctx context.Context, target string) (string, error) {
+func runNativeTrace(ctx context.Context, target string, resolver IPResolver) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 
-	dstIP, err := resolveTraceTarget(ctx, target)
+	dstIP, err := resolveTraceTarget(ctx, resolver, target)
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return "", errTraceTimeout
@@ -137,11 +145,11 @@ func runNativeTrace(ctx context.Context, target string) (string, error) {
 	return formatNativeTrace(target, dstIP, result), nil
 }
 
-func resolveTraceTarget(ctx context.Context, target string) (net.IP, error) {
+func resolveTraceTarget(ctx context.Context, resolver IPResolver, target string) (net.IP, error) {
 	if ip := net.ParseIP(target); ip != nil {
 		return ip, nil
 	}
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, target)
+	addrs, err := lookupIPAddrs(ctx, resolver, target)
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +209,25 @@ func traceHopAddress(hop ntrace.Hop) string {
 	}
 }
 
+func resolveCommandTarget(ctx context.Context, resolver IPResolver, target string) (string, error) {
+	if resolver == nil {
+		return target, nil
+	}
+	if ip := net.ParseIP(target); ip != nil {
+		return ip.String(), nil
+	}
+	addrs, err := lookupIPAddrs(ctx, resolver, target)
+	if err != nil {
+		return "", err
+	}
+	for _, addr := range addrs {
+		if addr.IP != nil {
+			return addr.IP.String(), nil
+		}
+	}
+	return "", fmt.Errorf("no address found for %s", target)
+}
+
 var traceAllStarsRegex = regexp.MustCompile(`^\s*\d+(?:\s+\*)+$`)
 
 func postProcessTrace(output string) string {
@@ -236,7 +263,8 @@ func postProcessTrace(output string) string {
 
 var tcpingNoiseRegex = regexp.MustCompile(`\n\nPing (?:stopped|interrupted).\n\n`)
 
-func TCPingHandler(runner CommandRunner) http.HandlerFunc {
+func TCPingHandler(runner CommandRunner, resolvers ...IPResolver) http.HandlerFunc {
+	resolver := optionalResolver(resolvers)
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -249,7 +277,7 @@ func TCPingHandler(runner CommandRunner) http.HandlerFunc {
 		}
 
 		if runner == nil {
-			output, err := runNativeTCPing(r.Context(), target, 5)
+			output, err := runNativeTCPing(r.Context(), resolver, target, 5)
 			if errors.Is(err, context.DeadlineExceeded) {
 				http.Error(w, "Request Timeout", http.StatusRequestTimeout)
 				return
@@ -283,8 +311,8 @@ func TCPingHandler(runner CommandRunner) http.HandlerFunc {
 	}
 }
 
-func runNativeTCPing(ctx context.Context, target string, count int) (string, error) {
-	host, port, address, err := parseTCPingTarget(target)
+func runNativeTCPing(ctx context.Context, resolver IPResolver, target string, count int) (string, error) {
+	host, port, err := parseTCPingTarget(target)
 	if err != nil {
 		return "", err
 	}
@@ -294,6 +322,11 @@ func runNativeTCPing(ctx context.Context, target string, count int) (string, err
 
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
+
+	addresses, err := resolveTCPingAddresses(ctx, resolver, host, port)
+	if err != nil {
+		return "", err
+	}
 
 	var sb strings.Builder
 	success := 0
@@ -305,7 +338,7 @@ func runNativeTCPing(ctx context.Context, target string, count int) (string, err
 
 		probeCtx, probeCancel := context.WithTimeout(ctx, 2*time.Second)
 		start := time.Now()
-		conn, err := dialer.DialContext(probeCtx, "tcp", address)
+		conn, err := dialTCPAddresses(probeCtx, dialer, addresses)
 		elapsed := time.Since(start)
 		probeTimedOut := errors.Is(probeCtx.Err(), context.DeadlineExceeded)
 		requestTimedOut := errors.Is(ctx.Err(), context.DeadlineExceeded)
@@ -332,7 +365,7 @@ func runNativeTCPing(ctx context.Context, target string, count int) (string, err
 	return sb.String(), nil
 }
 
-func parseTCPingTarget(target string) (host, port, address string, err error) {
+func parseTCPingTarget(target string) (host, port string, err error) {
 	fields := strings.Fields(target)
 	switch len(fields) {
 	case 1:
@@ -346,16 +379,16 @@ func parseTCPingTarget(target string) (host, port, address string, err error) {
 		err = fmt.Errorf("expected target as host port or host:port")
 	}
 	if err != nil {
-		return "", "", "", err
+		return "", "", err
 	}
 	if host == "" || port == "" {
-		return "", "", "", fmt.Errorf("host and port are required")
+		return "", "", fmt.Errorf("host and port are required")
 	}
 	portNum, err := strconv.Atoi(port)
 	if err != nil || portNum <= 0 || portNum > 65535 {
-		return "", "", "", fmt.Errorf("invalid port: %s", port)
+		return "", "", fmt.Errorf("invalid port: %s", port)
 	}
-	return strings.Trim(host, "[]"), port, net.JoinHostPort(strings.Trim(host, "[]"), port), nil
+	return strings.Trim(host, "[]"), port, nil
 }
 
 func splitHostPortCompat(target string) (string, string, error) {
@@ -364,6 +397,45 @@ func splitHostPortCompat(target string) (string, string, error) {
 	}
 	parts := strings.SplitN(target, ":", 2)
 	return parts[0], parts[1], nil
+}
+
+func resolveTCPingAddresses(ctx context.Context, resolver IPResolver, host, port string) ([]string, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		return []string{net.JoinHostPort(ip.String(), port)}, nil
+	}
+
+	addrs, err := lookupIPAddrs(ctx, resolver, host)
+	if err != nil {
+		return nil, err
+	}
+	addresses := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		if addr.IP != nil {
+			addresses = append(addresses, net.JoinHostPort(addr.IP.String(), port))
+		}
+	}
+	if len(addresses) == 0 {
+		return nil, fmt.Errorf("no address found for %s", host)
+	}
+	return addresses, nil
+}
+
+func dialTCPAddresses(ctx context.Context, dialer net.Dialer, addresses []string) (net.Conn, error) {
+	var lastErr error
+	for _, address := range addresses {
+		conn, err := dialer.DialContext(ctx, "tcp", address)
+		if err == nil {
+			return conn, nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no address found")
+	}
+	return nil, lastErr
 }
 
 func readBodyTarget(w http.ResponseWriter, r *http.Request) string {

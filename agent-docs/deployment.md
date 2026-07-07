@@ -115,6 +115,14 @@ The Docker image includes these packages (installed automatically):
 
 Traceroute/MTR is built into the agent binary via `github.com/nxtrace/NTrace-core` (GPL-3.0). TCPing is built into the agent binary using Go's `net.Dialer`; no external `traceroute`, `mtr`, or `tcping` command is required for Docker or bare-metal deployments.
 
+Set `dns_servers` in `config.yaml` when built-in `ping`, `trace`, and `tcping` should resolve hostnames through DN42 or another explicit DNS service instead of the system resolver:
+
+```yaml
+dns_servers:
+  - 172.20.0.53
+  - 1.1.1.1
+```
+
 ## Systemd Service (Non-Docker)
 
 For non-Docker deployments, run the agent as a systemd service:

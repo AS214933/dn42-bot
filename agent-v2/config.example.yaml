@@ -24,3 +24,7 @@ vnstat_auto_add: true
 vnstat_auto_remove: false
 default_mtu: 1420
 server_url: ""
+
+# Optional DNS servers for built-in ping/trace/tcping hostname resolution.
+# Accepts IP, IP:port, or [IPv6]:port. Empty list uses system DNS.
+dns_servers: []

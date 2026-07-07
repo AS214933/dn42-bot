@@ -417,7 +417,7 @@ curl -X POST http://agent-host:54321/listpeers \
 
 ### POST /ping
 
-Runs `ping` (5 packets, 6s timeout) against the specified target.
+Runs `ping` (5 packets, 6s timeout) against the specified target. When `dns_servers` is configured in agent-v2, hostnames are resolved through those DNS servers before invoking `ping`.
 
 **Request Body (plain text):**
 ```
@@ -450,7 +450,7 @@ curl -X POST http://agent-host:54321/ping \
 
 ### POST /trace
 
-Runs the built-in NTrace-core traceroute/MTR engine against the specified target. The server maps `/trace`, `/traceroute`, and `/mtr` commands to this endpoint.
+Runs the built-in NTrace-core traceroute/MTR engine against the specified target. The server maps `/trace`, `/traceroute`, and `/mtr` commands to this endpoint. When `dns_servers` is configured in agent-v2, hostnames are resolved through those DNS servers instead of the system resolver.
 
 **Request Body (plain text):**
 ```
@@ -484,7 +484,7 @@ curl -X POST http://agent-host:54321/trace \
 
 ### POST /tcping
 
-Runs the built-in TCPing implementation against the specified target. It sends 5 TCP connect probes using Go's `net.Dialer`; no external `tcping` command is required.
+Runs the built-in TCPing implementation against the specified target. It sends 5 TCP connect probes using Go's `net.Dialer`; no external `tcping` command is required. When `dns_servers` is configured in agent-v2, hostnames are resolved through those DNS servers instead of the system resolver.
 
 **Request Body (plain text):**
 ```

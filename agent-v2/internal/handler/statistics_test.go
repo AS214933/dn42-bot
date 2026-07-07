@@ -12,6 +12,17 @@ import (
 	ntrace "github.com/nxtrace/NTrace-core/trace"
 )
 
+type fakeIPResolver struct {
+	addrs []net.IPAddr
+	err   error
+	calls []string
+}
+
+func (r *fakeIPResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	r.calls = append(r.calls, host)
+	return r.addrs, r.err
+}
+
 func TestPingHandler_Success(t *testing.T) {
 	t.Parallel()
 	runner := func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error) {
@@ -37,6 +48,30 @@ func TestPingHandler_Success(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "PING 172.20.0.1") {
 		t.Errorf("expected PING in output, got %q", rec.Body.String())
+	}
+}
+
+func TestPingHandler_CustomResolver(t *testing.T) {
+	resolver := &fakeIPResolver{
+		addrs: []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}},
+	}
+	runner := func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error) {
+		if args[4] != "127.0.0.1" {
+			t.Fatalf("ping target = %q, want resolved IP", args[4])
+		}
+		return "PING 127.0.0.1", nil
+	}
+	handler := PingHandler(runner, resolver)
+
+	req := httptest.NewRequest(http.MethodPost, "/ping", strings.NewReader("example.dn42"))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(resolver.calls) != 1 || resolver.calls[0] != "example.dn42" {
+		t.Fatalf("resolver calls = %v, want [example.dn42]", resolver.calls)
 	}
 }
 
@@ -479,6 +514,44 @@ func TestTraceHandler_NativeNextTraceSuccess(t *testing.T) {
 	}
 }
 
+func TestTraceHandler_NativeCustomResolver(t *testing.T) {
+	oldTraceroute := ntraceTraceroute
+	ntraceTraceroute = func(ctx context.Context, method ntrace.Method, config ntrace.Config) (*ntrace.Result, error) {
+		if got := config.DstIP.String(); got != "172.20.0.1" {
+			t.Fatalf("DstIP = %q, want resolver IP", got)
+		}
+		return &ntrace.Result{Hops: [][]ntrace.Hop{
+			{
+				{
+					Success: true,
+					Address: &net.IPAddr{IP: net.ParseIP("172.20.0.1")},
+					TTL:     1,
+					RTT:     time.Millisecond,
+				},
+			},
+		}}, nil
+	}
+	t.Cleanup(func() { ntraceTraceroute = oldTraceroute })
+
+	resolver := &fakeIPResolver{
+		addrs: []net.IPAddr{{IP: net.ParseIP("172.20.0.1")}},
+	}
+	handler := TraceHandler(nil, resolver)
+	req := httptest.NewRequest(http.MethodPost, "/trace", strings.NewReader("trace.example"))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(resolver.calls) != 1 || resolver.calls[0] != "trace.example" {
+		t.Fatalf("resolver calls = %v, want [trace.example]", resolver.calls)
+	}
+	if !strings.Contains(rec.Body.String(), "traceroute to trace.example (172.20.0.1)") {
+		t.Fatalf("expected resolved trace header, got %q", rec.Body.String())
+	}
+}
+
 func TestTCPingHandler_Success(t *testing.T) {
 	t.Parallel()
 	runner := func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error) {
@@ -546,6 +619,47 @@ func TestTCPingHandler_NativeSuccessHostPortFields(t *testing.T) {
 	}
 	if !strings.Contains(body, "5 probes sent, 5 successful, 0 failed") {
 		t.Fatalf("expected success stats, got %q", body)
+	}
+}
+
+func TestTCPingHandler_NativeCustomResolver(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+
+	_, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatalf("split listener addr: %v", err)
+	}
+
+	resolver := &fakeIPResolver{
+		addrs: []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}},
+	}
+	handler := TCPingHandler(nil, resolver)
+	req := httptest.NewRequest(http.MethodPost, "/tcping", strings.NewReader("tcping.example "+port))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(resolver.calls) != 1 || resolver.calls[0] != "tcping.example" {
+		t.Fatalf("resolver calls = %v, want [tcping.example]", resolver.calls)
+	}
+	if !strings.Contains(rec.Body.String(), "5 probes sent, 5 successful, 0 failed") {
+		t.Fatalf("expected success stats, got %q", rec.Body.String())
 	}
 }
 

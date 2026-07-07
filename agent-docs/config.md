@@ -31,6 +31,7 @@ vnstat_auto_add: true
 vnstat_auto_remove: false
 default_mtu: 1420
 server_url: ""
+dns_servers: []
 ```
 
 ## Top-Level Keys
@@ -56,6 +57,7 @@ server_url: ""
 | `vnstat_auto_remove` | bool | `false` | No | Whether to automatically remove tunnel interfaces from vnstat when peers are deleted. See [conditional logic](#conditional-logic) below. |
 | `default_mtu` | int | `1420` | No | Default MTU for WireGuard tunnels. Peers can override this per-peer. |
 | `server_url` | string | `""` | No | URL of the server this agent reports to. |
+| `dns_servers` | list of strings | `[]` | No | DNS servers used by built-in `ping`, `trace`, and `tcping` hostname resolution. Accepts `IP`, `IP:port`, or `[IPv6]:port`. Empty list uses system DNS. |
 
 ## `net_support` Sub-Fields
 
@@ -83,6 +85,10 @@ When `max_peers` is set to `0`, there is no peer limit. The agent accepts all in
 ### `min_peer_requirement`
 
 When `0`, any user can peer. When set to a positive integer, the requester must already have at least that many peers on other nodes before this agent will accept them.
+
+### `dns_servers`
+
+When this list is non-empty, agent-v2 resolves hostnames for built-in network diagnostics through these DNS servers instead of the system resolver. This affects `/ping`, `/trace`, and `/tcping`. DNS servers are tried in rotating order with fallback to the next configured server on lookup failure.
 
 ## Environment Variables
 

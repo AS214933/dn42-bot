@@ -40,6 +40,7 @@ func main() {
 	r.Use(middleware.SentryMiddleware(cfg.SentryDSN))
 
 	runCmd := service.RunCommand
+	dnsResolver := handler.NewDNSResolver(cfg.DNSServers)
 
 	// /version — no auth
 	r.Post("/version", handler.VersionHandler())
@@ -108,9 +109,9 @@ func main() {
 			},
 		})
 
-		r.Post("/ping", handler.PingHandler(runCmd))
-		r.Post("/trace", handler.TraceHandler(nil))
-		r.Post("/tcping", handler.TCPingHandler(nil))
+		r.Post("/ping", handler.PingHandler(runCmd, dnsResolver))
+		r.Post("/trace", handler.TraceHandler(nil, dnsResolver))
+		r.Post("/tcping", handler.TCPingHandler(nil, dnsResolver))
 
 		r.Handle("/route", handler.RouteHandler(cfg, handler.NewBirdcRunner()))
 		r.Handle("/path", handler.PathHandler(cfg, handler.NewBirdcRunner()))

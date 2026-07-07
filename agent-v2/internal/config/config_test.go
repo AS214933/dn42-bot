@@ -42,6 +42,10 @@ vnstat_auto_add: true
 vnstat_auto_remove: true
 default_mtu: 1500
 server_url: "https://server.example.com"
+dns_servers:
+  - "172.20.0.53"
+  - "1.1.1.1:5353"
+  - "fd00::53"
 `
 	path := writeTempConfig(t, yaml)
 
@@ -119,6 +123,15 @@ server_url: "https://server.example.com"
 	if cfg.ServerURL != "https://server.example.com" {
 		t.Errorf("ServerURL = %q, want %q", cfg.ServerURL, "https://server.example.com")
 	}
+	wantDNSServers := []string{"172.20.0.53:53", "1.1.1.1:5353", "[fd00::53]:53"}
+	if len(cfg.DNSServers) != len(wantDNSServers) {
+		t.Fatalf("DNSServers = %v, want %v", cfg.DNSServers, wantDNSServers)
+	}
+	for i, want := range wantDNSServers {
+		if cfg.DNSServers[i] != want {
+			t.Errorf("DNSServers[%d] = %q, want %q", i, cfg.DNSServers[i], want)
+		}
+	}
 }
 
 func TestLoadDefaultValues(t *testing.T) {
@@ -166,6 +179,9 @@ vnstat_auto_add: false
 	}
 	if cfg.ServerURL != "" {
 		t.Errorf("ServerURL = %q, want empty", cfg.ServerURL)
+	}
+	if len(cfg.DNSServers) != 0 {
+		t.Errorf("DNSServers = %v, want empty", cfg.DNSServers)
 	}
 }
 
@@ -253,6 +269,27 @@ func TestLoadInvalidYAML(t *testing.T) {
 	_, err := Load(path)
 	if err == nil {
 		t.Error("Load() should return error for invalid YAML")
+	}
+}
+
+func TestLoadInvalidDNSServer(t *testing.T) {
+	yaml := `
+secret: "s"
+open: false
+my_dn42_link_local_address: "fe80::1"
+my_dn42_ula_address: "fd00::1"
+my_dn42_ipv4_address: "10.0.0.1"
+my_wg_public_key: "key"
+bird_table_4: "t4"
+bird_table_6: "t6"
+vnstat_auto_add: false
+dns_servers:
+  - "dns.example.com"
+`
+	path := writeTempConfig(t, yaml)
+	_, err := Load(path)
+	if err == nil {
+		t.Error("Load() should return error for invalid DNS server")
 	}
 }
 

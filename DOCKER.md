@@ -61,6 +61,14 @@ services:
 
 Agent v2 已内置基于 NTrace-core 的 traceroute/MTR 与基于 Go `net.Dialer` 的 TCPing。裸机部署时无需额外安装 `traceroute`、`mtr` 或 `tcping`；但 traceroute/MTR 需要 root 或 `CAP_NET_RAW` 权限。
 
+如需让内置 `ping`、`trace`、`tcping` 使用 DN42 DNS 或其他指定 DNS，而不是系统 DNS，请在 `config.yaml` 中配置：
+
+```yaml
+dns_servers:
+  - 172.20.0.53
+  - 1.1.1.1
+```
+
 ### IGP 拓扑图
 
 `/topology` 命令通过查询各 Agent 节点的 BIRD Babel 邻居/接口信息，生成自家 PoP（节点）之间的内部 IGP mesh 拓扑图。
