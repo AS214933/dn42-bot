@@ -32,6 +32,15 @@ vnstat_auto_remove: false
 default_mtu: 1420
 server_url: ""
 dns_servers: []
+auto_update:
+  enabled: false
+  channel: "candidate"
+  check_interval: "24h"
+  repository: "AS214933/dn42-bot"
+  data_dir: "/etc/dn42-agent"
+  agent_path: "/etc/dn42-agent/agent"
+  service_name: "dn42-agent.service"
+  service_path: "/etc/systemd/system/dn42-agent.service"
 ```
 
 ## Top-Level Keys
@@ -58,6 +67,7 @@ dns_servers: []
 | `default_mtu` | int | `1420` | No | Default MTU for WireGuard tunnels. Peers can override this per-peer. |
 | `server_url` | string | `""` | No | URL of the server this agent reports to. |
 | `dns_servers` | list of strings | `[]` | No | DNS servers used by built-in `ping`, `trace`, and `tcping` hostname resolution. Accepts `IP`, `IP:port`, or `[IPv6]:port`. Empty list uses system DNS. |
+| `auto_update` | object | See below | No | GitHub release update settings for the bare-metal agent binary. |
 
 ## `net_support` Sub-Fields
 
@@ -89,6 +99,21 @@ When `0`, any user can peer. When set to a positive integer, the requester must 
 ### `dns_servers`
 
 When this list is non-empty, agent-v2 resolves hostnames for built-in network diagnostics through these DNS servers instead of the system resolver. This affects `/ping`, `/trace`, and `/tcping`. DNS servers are tried in rotating order with fallback to the next configured server on lookup failure.
+
+### `auto_update`
+
+The updater is intended for bare-metal deployments where the operator has already placed the agent data under `/etc/dn42-agent`, installed the agent binary at `/etc/dn42-agent/agent`, and created `/etc/systemd/system/dn42-agent.service`. The agent uses these paths when updating, but does not create the directory, binary path, or systemd unit for you.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `false` | Whether the agent periodically checks for and installs newer releases. Manual update endpoints can still be called when this is `false`. |
+| `channel` | `"candidate"` | `candidate` includes prereleases such as alpha/beta/rc; `stable` only follows non-prerelease releases. |
+| `check_interval` | `"24h"` | Interval for background update checks when `enabled` is true. |
+| `repository` | `"AS214933/dn42-bot"` | GitHub repository used for release metadata and assets. |
+| `data_dir` | `"/etc/dn42-agent"` | Directory used for temporary update files. Must already exist. |
+| `agent_path` | `"/etc/dn42-agent/agent"` | Installed agent binary path to replace during update. |
+| `service_name` | `"dn42-agent.service"` | systemd service name restarted after an installed update. |
+| `service_path` | `"/etc/systemd/system/dn42-agent.service"` | systemd unit file path checked before restarting. |
 
 ## Environment Variables
 

@@ -5,8 +5,10 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -18,52 +20,76 @@ type NetSupport struct {
 	CN      bool `yaml:"cn"`
 }
 
+type AutoUpdateConfig struct {
+	Enabled       bool          `yaml:"enabled"`
+	Channel       string        `yaml:"channel"`
+	CheckInterval time.Duration `yaml:"check_interval"`
+	Repository    string        `yaml:"repository"`
+	DataDir       string        `yaml:"data_dir"`
+	AgentPath     string        `yaml:"agent_path"`
+	ServiceName   string        `yaml:"service_name"`
+	ServicePath   string        `yaml:"service_path"`
+}
+
 type Config struct {
-	Host                   string     `yaml:"host"`
-	Port                   int        `yaml:"port"`
-	Secret                 string     `yaml:"secret"`
-	Open                   bool       `yaml:"open"`
-	MaxPeers               int        `yaml:"max_peers"`
-	MinPeerRequirement     int        `yaml:"min_peer_requirement"`
-	NetSupport             NetSupport `yaml:"net_support"`
-	ExtraMsg               string     `yaml:"extra_msg"`
-	MyDN42LinkLocalAddress net.IP     `yaml:"my_dn42_link_local_address"`
-	MyDN42ULAAddress       net.IP     `yaml:"my_dn42_ula_address"`
-	MyDN42IPv4Address      net.IP     `yaml:"my_dn42_ipv4_address"`
-	MyWGPublicKey          string     `yaml:"my_wg_public_key"`
-	SentryDSN              string     `yaml:"sentry_dsn"`
-	BirdCtlPath            string     `yaml:"bird_ctl_path"`
-	BirdTable4             string     `yaml:"bird_table_4"`
-	BirdTable6             string     `yaml:"bird_table_6"`
-	VnstatAutoAdd          bool       `yaml:"vnstat_auto_add"`
-	VnstatAutoRemove       bool       `yaml:"vnstat_auto_remove"`
-	DefaultMTU             int        `yaml:"default_mtu"`
-	ServerURL              string     `yaml:"server_url"`
-	DNSServers             []string   `yaml:"dns_servers"`
+	Host                   string           `yaml:"host"`
+	Port                   int              `yaml:"port"`
+	Secret                 string           `yaml:"secret"`
+	Open                   bool             `yaml:"open"`
+	MaxPeers               int              `yaml:"max_peers"`
+	MinPeerRequirement     int              `yaml:"min_peer_requirement"`
+	NetSupport             NetSupport       `yaml:"net_support"`
+	ExtraMsg               string           `yaml:"extra_msg"`
+	MyDN42LinkLocalAddress net.IP           `yaml:"my_dn42_link_local_address"`
+	MyDN42ULAAddress       net.IP           `yaml:"my_dn42_ula_address"`
+	MyDN42IPv4Address      net.IP           `yaml:"my_dn42_ipv4_address"`
+	MyWGPublicKey          string           `yaml:"my_wg_public_key"`
+	SentryDSN              string           `yaml:"sentry_dsn"`
+	BirdCtlPath            string           `yaml:"bird_ctl_path"`
+	BirdTable4             string           `yaml:"bird_table_4"`
+	BirdTable6             string           `yaml:"bird_table_6"`
+	VnstatAutoAdd          bool             `yaml:"vnstat_auto_add"`
+	VnstatAutoRemove       bool             `yaml:"vnstat_auto_remove"`
+	DefaultMTU             int              `yaml:"default_mtu"`
+	ServerURL              string           `yaml:"server_url"`
+	DNSServers             []string         `yaml:"dns_servers"`
+	AutoUpdate             AutoUpdateConfig `yaml:"auto_update"`
 }
 
 type rawConfig struct {
-	Host                   string     `yaml:"host"`
-	Port                   *int       `yaml:"port"`
-	Secret                 string     `yaml:"secret"`
-	Open                   bool       `yaml:"open"`
-	MaxPeers               *int       `yaml:"max_peers"`
-	MinPeerRequirement     *int       `yaml:"min_peer_requirement"`
-	NetSupport             NetSupport `yaml:"net_support"`
-	ExtraMsg               *string    `yaml:"extra_msg"`
-	MyDN42LinkLocalAddress string     `yaml:"my_dn42_link_local_address"`
-	MyDN42ULAAddress       string     `yaml:"my_dn42_ula_address"`
-	MyDN42IPv4Address      string     `yaml:"my_dn42_ipv4_address"`
-	MyWGPublicKey          string     `yaml:"my_wg_public_key"`
-	SentryDSN              *string    `yaml:"sentry_dsn"`
-	BirdCtlPath            *string    `yaml:"bird_ctl_path"`
-	BirdTable4             string     `yaml:"bird_table_4"`
-	BirdTable6             string     `yaml:"bird_table_6"`
-	VnstatAutoAdd          bool       `yaml:"vnstat_auto_add"`
-	VnstatAutoRemove       *bool      `yaml:"vnstat_auto_remove"`
-	DefaultMTU             *int       `yaml:"default_mtu"`
-	ServerURL              *string    `yaml:"server_url"`
-	DNSServers             []string   `yaml:"dns_servers"`
+	Host                   string              `yaml:"host"`
+	Port                   *int                `yaml:"port"`
+	Secret                 string              `yaml:"secret"`
+	Open                   bool                `yaml:"open"`
+	MaxPeers               *int                `yaml:"max_peers"`
+	MinPeerRequirement     *int                `yaml:"min_peer_requirement"`
+	NetSupport             NetSupport          `yaml:"net_support"`
+	ExtraMsg               *string             `yaml:"extra_msg"`
+	MyDN42LinkLocalAddress string              `yaml:"my_dn42_link_local_address"`
+	MyDN42ULAAddress       string              `yaml:"my_dn42_ula_address"`
+	MyDN42IPv4Address      string              `yaml:"my_dn42_ipv4_address"`
+	MyWGPublicKey          string              `yaml:"my_wg_public_key"`
+	SentryDSN              *string             `yaml:"sentry_dsn"`
+	BirdCtlPath            *string             `yaml:"bird_ctl_path"`
+	BirdTable4             string              `yaml:"bird_table_4"`
+	BirdTable6             string              `yaml:"bird_table_6"`
+	VnstatAutoAdd          bool                `yaml:"vnstat_auto_add"`
+	VnstatAutoRemove       *bool               `yaml:"vnstat_auto_remove"`
+	DefaultMTU             *int                `yaml:"default_mtu"`
+	ServerURL              *string             `yaml:"server_url"`
+	DNSServers             []string            `yaml:"dns_servers"`
+	AutoUpdate             rawAutoUpdateConfig `yaml:"auto_update"`
+}
+
+type rawAutoUpdateConfig struct {
+	Enabled       bool    `yaml:"enabled"`
+	Channel       *string `yaml:"channel"`
+	CheckInterval *string `yaml:"check_interval"`
+	Repository    *string `yaml:"repository"`
+	DataDir       *string `yaml:"data_dir"`
+	AgentPath     *string `yaml:"agent_path"`
+	ServiceName   *string `yaml:"service_name"`
+	ServicePath   *string `yaml:"service_path"`
 }
 
 func Load(path string) (*Config, error) {
@@ -130,6 +156,11 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	autoUpdate, err := normalizeAutoUpdate(raw.AutoUpdate)
+	if err != nil {
+		return nil, err
+	}
+
 	linkLocalAddr := net.ParseIP(raw.MyDN42LinkLocalAddress)
 	if linkLocalAddr == nil {
 		return nil, fmt.Errorf("invalid my_dn42_link_local_address: %q", raw.MyDN42LinkLocalAddress)
@@ -175,9 +206,82 @@ func Load(path string) (*Config, error) {
 		DefaultMTU:             defaultMTU,
 		ServerURL:              serverURL,
 		DNSServers:             dnsServers,
+		AutoUpdate:             autoUpdate,
 	}
 
 	return cfg, nil
+}
+
+func normalizeAutoUpdate(raw rawAutoUpdateConfig) (AutoUpdateConfig, error) {
+	cfg := AutoUpdateConfig{
+		Enabled:       raw.Enabled,
+		Channel:       "candidate",
+		CheckInterval: 24 * time.Hour,
+		Repository:    "AS214933/dn42-bot",
+		DataDir:       "/etc/dn42-agent",
+		AgentPath:     "/etc/dn42-agent/agent",
+		ServiceName:   "dn42-agent.service",
+		ServicePath:   "/etc/systemd/system/dn42-agent.service",
+	}
+
+	if raw.Channel != nil {
+		channel, err := normalizeUpdateChannel(*raw.Channel)
+		if err != nil {
+			return AutoUpdateConfig{}, err
+		}
+		cfg.Channel = channel
+	}
+	if raw.CheckInterval != nil && strings.TrimSpace(*raw.CheckInterval) != "" {
+		interval, err := time.ParseDuration(strings.TrimSpace(*raw.CheckInterval))
+		if err != nil || interval <= 0 {
+			return AutoUpdateConfig{}, fmt.Errorf("invalid auto_update.check_interval %q", *raw.CheckInterval)
+		}
+		cfg.CheckInterval = interval
+	}
+	if raw.Repository != nil && strings.TrimSpace(*raw.Repository) != "" {
+		cfg.Repository = strings.TrimSpace(*raw.Repository)
+	}
+	if raw.DataDir != nil && strings.TrimSpace(*raw.DataDir) != "" {
+		cfg.DataDir = strings.TrimSpace(*raw.DataDir)
+	}
+	if raw.AgentPath != nil && strings.TrimSpace(*raw.AgentPath) != "" {
+		cfg.AgentPath = strings.TrimSpace(*raw.AgentPath)
+	}
+	if raw.ServiceName != nil && strings.TrimSpace(*raw.ServiceName) != "" {
+		cfg.ServiceName = strings.TrimSpace(*raw.ServiceName)
+	}
+	if raw.ServicePath != nil && strings.TrimSpace(*raw.ServicePath) != "" {
+		cfg.ServicePath = strings.TrimSpace(*raw.ServicePath)
+	}
+
+	if !strings.Contains(cfg.Repository, "/") {
+		return AutoUpdateConfig{}, fmt.Errorf("invalid auto_update.repository %q: expected owner/repo", cfg.Repository)
+	}
+	for field, path := range map[string]string{
+		"data_dir":     cfg.DataDir,
+		"agent_path":   cfg.AgentPath,
+		"service_path": cfg.ServicePath,
+	} {
+		if !filepath.IsAbs(path) {
+			return AutoUpdateConfig{}, fmt.Errorf("invalid auto_update.%s %q: expected absolute path", field, path)
+		}
+	}
+	if cfg.ServiceName == "" {
+		return AutoUpdateConfig{}, fmt.Errorf("invalid auto_update.service_name: empty")
+	}
+
+	return cfg, nil
+}
+
+func normalizeUpdateChannel(channel string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(channel)) {
+	case "", "candidate", "candidates", "prerelease", "pre", "preview", "alpha", "beta", "rc":
+		return "candidate", nil
+	case "stable", "release", "releases":
+		return "stable", nil
+	default:
+		return "", fmt.Errorf("invalid auto_update.channel %q: expected stable or candidate", channel)
+	}
 }
 
 func normalizeDNSServers(servers []string) ([]string, error) {

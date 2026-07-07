@@ -59,6 +59,47 @@ def parse_args() -> argparse.Namespace:
         help="Add a v2 dns_servers entry. May be repeated.",
     )
     parser.add_argument(
+        "--auto-update-enabled",
+        action="store_true",
+        help="Enable agent-v2 automatic release updates in the generated config.",
+    )
+    parser.add_argument(
+        "--auto-update-channel",
+        choices=("candidate", "stable"),
+        default="candidate",
+        help="Update channel. candidate includes prereleases. Default: candidate.",
+    )
+    parser.add_argument(
+        "--auto-update-check-interval",
+        default="24h",
+        help="Automatic update check interval. Default: 24h.",
+    )
+    parser.add_argument(
+        "--auto-update-repository",
+        default="AS214933/dn42-bot",
+        help="GitHub release repository owner/name. Default: AS214933/dn42-bot.",
+    )
+    parser.add_argument(
+        "--auto-update-data-dir",
+        default="/etc/dn42-agent",
+        help="Agent data directory used for update temp files. Default: /etc/dn42-agent.",
+    )
+    parser.add_argument(
+        "--auto-update-agent-path",
+        default="/etc/dn42-agent/agent",
+        help="Installed agent binary path. Default: /etc/dn42-agent/agent.",
+    )
+    parser.add_argument(
+        "--auto-update-service-name",
+        default="dn42-agent.service",
+        help="systemd service name to restart after update. Default: dn42-agent.service.",
+    )
+    parser.add_argument(
+        "--auto-update-service-path",
+        default="/etc/systemd/system/dn42-agent.service",
+        help="systemd service file path checked before restart. Default: /etc/systemd/system/dn42-agent.service.",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Overwrite output if it already exists.",
@@ -88,7 +129,7 @@ def require_value(config: dict, key: str, default):
     raise SystemExit(f"missing required v1 config key: {key}")
 
 
-def convert_config(v1: dict, dns_servers: list[str]) -> dict:
+def convert_config(v1: dict, args: argparse.Namespace) -> dict:
     v2 = {}
 
     for old_key, new_key, default in FIELD_MAP:
@@ -109,7 +150,17 @@ def convert_config(v1: dict, dns_servers: list[str]) -> dict:
     v2["default_mtu"] = int(v2["default_mtu"])
     v2["vnstat_auto_remove"] = bool(v2["vnstat_auto_remove"]) if v2["vnstat_auto_add"] else False
     v2["server_url"] = "" if v2["server_url"] is None else v2["server_url"]
-    v2["dns_servers"] = dns_servers
+    v2["dns_servers"] = args.dns_server
+    v2["auto_update"] = {
+        "enabled": bool(args.auto_update_enabled),
+        "channel": args.auto_update_channel,
+        "check_interval": args.auto_update_check_interval,
+        "repository": args.auto_update_repository,
+        "data_dir": args.auto_update_data_dir,
+        "agent_path": args.auto_update_agent_path,
+        "service_name": args.auto_update_service_name,
+        "service_path": args.auto_update_service_path,
+    }
 
     return v2
 
@@ -168,6 +219,21 @@ def render_yaml(config: dict) -> str:
     else:
         lines[-1] = "dns_servers: []"
 
+    lines.extend(
+        [
+            "",
+            "auto_update:",
+            f"  enabled: {yaml_scalar(config['auto_update']['enabled'])}",
+            f"  channel: {yaml_scalar(config['auto_update']['channel'])}",
+            f"  check_interval: {yaml_scalar(config['auto_update']['check_interval'])}",
+            f"  repository: {yaml_scalar(config['auto_update']['repository'])}",
+            f"  data_dir: {yaml_scalar(config['auto_update']['data_dir'])}",
+            f"  agent_path: {yaml_scalar(config['auto_update']['agent_path'])}",
+            f"  service_name: {yaml_scalar(config['auto_update']['service_name'])}",
+            f"  service_path: {yaml_scalar(config['auto_update']['service_path'])}",
+        ]
+    )
+
     return "\n".join(lines) + "\n"
 
 
@@ -180,7 +246,7 @@ def main() -> int:
         raise SystemExit(f"output already exists: {output_path}; use --force to overwrite")
 
     v1 = load_v1_config(input_path)
-    v2 = convert_config(v1, args.dns_server)
+    v2 = convert_config(v1, args)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(render_yaml(v2), encoding="utf-8")
     print(f"wrote {output_path}")

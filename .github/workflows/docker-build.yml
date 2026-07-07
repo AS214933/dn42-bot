@@ -127,6 +127,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
+            VERSION=${{ github.ref_name }}
             BUILD_DATE=${{ steps.date.outputs.date }}
             GIT_COMMIT=${{ github.sha }}
           cache-from: type=gha
@@ -219,7 +220,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
         run: |
-          go build -ldflags="-s -w" -o agent-v2-${{ matrix.suffix }} ./cmd/agent
+          go build -ldflags="-s -w -X github.com/bingxin666/dn42-bot/agent-v2/internal/service.BuildVersion=${{ github.ref_name }} -X github.com/bingxin666/dn42-bot/agent-v2/internal/service.BuildCommit=${{ github.sha }}" -o agent-v2-${{ matrix.suffix }} ./cmd/agent
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

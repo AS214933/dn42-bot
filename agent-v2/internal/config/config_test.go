@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func writeTempConfig(t *testing.T, content string) string {
@@ -46,6 +47,15 @@ dns_servers:
   - "172.20.0.53"
   - "1.1.1.1:5353"
   - "fd00::53"
+auto_update:
+  enabled: true
+  channel: "stable"
+  check_interval: "6h"
+  repository: "AS214933/dn42-bot"
+  data_dir: "/var/lib/dn42-agent"
+  agent_path: "/var/lib/dn42-agent/agent"
+  service_name: "custom-agent.service"
+  service_path: "/etc/systemd/system/custom-agent.service"
 `
 	path := writeTempConfig(t, yaml)
 
@@ -132,6 +142,30 @@ dns_servers:
 			t.Errorf("DNSServers[%d] = %q, want %q", i, cfg.DNSServers[i], want)
 		}
 	}
+	if !cfg.AutoUpdate.Enabled {
+		t.Error("AutoUpdate.Enabled = false, want true")
+	}
+	if cfg.AutoUpdate.Channel != "stable" {
+		t.Errorf("AutoUpdate.Channel = %q, want stable", cfg.AutoUpdate.Channel)
+	}
+	if cfg.AutoUpdate.CheckInterval != 6*time.Hour {
+		t.Errorf("AutoUpdate.CheckInterval = %v, want 6h", cfg.AutoUpdate.CheckInterval)
+	}
+	if cfg.AutoUpdate.Repository != "AS214933/dn42-bot" {
+		t.Errorf("AutoUpdate.Repository = %q", cfg.AutoUpdate.Repository)
+	}
+	if cfg.AutoUpdate.DataDir != "/var/lib/dn42-agent" {
+		t.Errorf("AutoUpdate.DataDir = %q", cfg.AutoUpdate.DataDir)
+	}
+	if cfg.AutoUpdate.AgentPath != "/var/lib/dn42-agent/agent" {
+		t.Errorf("AutoUpdate.AgentPath = %q", cfg.AutoUpdate.AgentPath)
+	}
+	if cfg.AutoUpdate.ServiceName != "custom-agent.service" {
+		t.Errorf("AutoUpdate.ServiceName = %q", cfg.AutoUpdate.ServiceName)
+	}
+	if cfg.AutoUpdate.ServicePath != "/etc/systemd/system/custom-agent.service" {
+		t.Errorf("AutoUpdate.ServicePath = %q", cfg.AutoUpdate.ServicePath)
+	}
 }
 
 func TestLoadDefaultValues(t *testing.T) {
@@ -182,6 +216,30 @@ vnstat_auto_add: false
 	}
 	if len(cfg.DNSServers) != 0 {
 		t.Errorf("DNSServers = %v, want empty", cfg.DNSServers)
+	}
+	if cfg.AutoUpdate.Enabled {
+		t.Error("AutoUpdate.Enabled = true, want default false")
+	}
+	if cfg.AutoUpdate.Channel != "candidate" {
+		t.Errorf("AutoUpdate.Channel = %q, want candidate", cfg.AutoUpdate.Channel)
+	}
+	if cfg.AutoUpdate.CheckInterval != 24*time.Hour {
+		t.Errorf("AutoUpdate.CheckInterval = %v, want 24h", cfg.AutoUpdate.CheckInterval)
+	}
+	if cfg.AutoUpdate.Repository != "AS214933/dn42-bot" {
+		t.Errorf("AutoUpdate.Repository = %q, want AS214933/dn42-bot", cfg.AutoUpdate.Repository)
+	}
+	if cfg.AutoUpdate.DataDir != "/etc/dn42-agent" {
+		t.Errorf("AutoUpdate.DataDir = %q, want /etc/dn42-agent", cfg.AutoUpdate.DataDir)
+	}
+	if cfg.AutoUpdate.AgentPath != "/etc/dn42-agent/agent" {
+		t.Errorf("AutoUpdate.AgentPath = %q, want /etc/dn42-agent/agent", cfg.AutoUpdate.AgentPath)
+	}
+	if cfg.AutoUpdate.ServiceName != "dn42-agent.service" {
+		t.Errorf("AutoUpdate.ServiceName = %q, want dn42-agent.service", cfg.AutoUpdate.ServiceName)
+	}
+	if cfg.AutoUpdate.ServicePath != "/etc/systemd/system/dn42-agent.service" {
+		t.Errorf("AutoUpdate.ServicePath = %q, want /etc/systemd/system/dn42-agent.service", cfg.AutoUpdate.ServicePath)
 	}
 }
 
@@ -290,6 +348,27 @@ dns_servers:
 	_, err := Load(path)
 	if err == nil {
 		t.Error("Load() should return error for invalid DNS server")
+	}
+}
+
+func TestLoadInvalidAutoUpdateChannel(t *testing.T) {
+	yaml := `
+secret: "s"
+open: false
+my_dn42_link_local_address: "fe80::1"
+my_dn42_ula_address: "fd00::1"
+my_dn42_ipv4_address: "10.0.0.1"
+my_wg_public_key: "key"
+bird_table_4: "t4"
+bird_table_6: "t6"
+vnstat_auto_add: false
+auto_update:
+  channel: "nightly"
+`
+	path := writeTempConfig(t, yaml)
+	_, err := Load(path)
+	if err == nil {
+		t.Error("Load() should return error for invalid auto_update.channel")
 	}
 }
 

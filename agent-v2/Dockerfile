@@ -4,11 +4,16 @@ ENV GOTOOLCHAIN=auto
 
 WORKDIR /build
 
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 go build -o /agent ./cmd/agent
+RUN CGO_ENABLED=0 go build \
+    -ldflags="-s -w -X github.com/bingxin666/dn42-bot/agent-v2/internal/service.BuildVersion=${VERSION} -X github.com/bingxin666/dn42-bot/agent-v2/internal/service.BuildCommit=${GIT_COMMIT}" \
+    -o /agent ./cmd/agent
 
 FROM debian:bookworm-slim
 

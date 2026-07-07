@@ -29,3 +29,17 @@ server_url: ""
 # Configured servers are also used for native trace rDNS/PTR lookups.
 # Accepts IP, IP:port, or [IPv6]:port. Empty list uses system DNS for hostname resolution.
 dns_servers: []
+
+# Manual update endpoints always use this configuration. Set enabled=true to
+# let the agent periodically install newer GitHub release binaries by itself.
+# Channel "candidate" includes prereleases such as alpha/beta/rc; "stable"
+# only follows non-prerelease releases.
+auto_update:
+  enabled: false
+  channel: "candidate"
+  check_interval: "24h"
+  repository: "AS214933/dn42-bot"
+  data_dir: "/etc/dn42-agent"
+  agent_path: "/etc/dn42-agent/agent"
+  service_name: "dn42-agent.service"
+  service_path: "/etc/systemd/system/dn42-agent.service"

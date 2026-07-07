@@ -169,6 +169,7 @@ Agent v2 implements the same HTTP API contract that the server uses with agent v
 - `POST /igp_topology`
 
 Agent v2 also adds `POST /listpeers` for the server's v2-only peer import/export workflow.
+Agent v2 also exposes `POST /update/check` and `POST /update/apply` for bare-metal agent release updates.
 
 No server-side changes are needed to support agent v2 beyond ensuring the `API_TOKEN` matches.
 

@@ -33,6 +33,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -41,6 +43,8 @@ func main() {
 
 	runCmd := service.RunCommand
 	dnsResolver := handler.NewDNSResolver(cfg.DNSServers)
+	updater := service.NewReleaseUpdater(cfg.AutoUpdate, service.ReleaseUpdaterDeps{RunCommand: runCmd})
+	go updater.Run(ctx)
 
 	// /version — no auth
 	r.Post("/version", handler.VersionHandler())
@@ -76,6 +80,8 @@ func main() {
 		r.Handle("/remove", handler.NewRemoveHandler(cfg, runCmd, os.Remove))
 
 		r.Handle("/restart", handler.NewRestartHandler(cfg, runCmd))
+		r.Post("/update/check", handler.UpdateCheckHandler(updater))
+		r.Post("/update/apply", handler.UpdateApplyHandler(updater))
 
 		r.Handle("/errorlist", &handler.ErrorListHandler{
 			Cfg: cfg,
@@ -119,7 +125,6 @@ func main() {
 		r.Handle("/igp_topology", handler.TopologyHandler(cfg, handler.DefaultBirdCommand()))
 	})
 
-	ctx := context.Background()
 	service.EnsureWGInterfacesUp(ctx, cfg, service.DefaultRecoveryDeps())
 
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
@@ -139,6 +144,7 @@ func main() {
 	}()
 
 	<-done
+	cancel()
 	log.Println("shutting down...")
 
 	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)

@@ -334,6 +334,65 @@ curl -X POST http://agent-host:54321/restart \
 
 ---
 
+## Agent Update
+
+### POST /update/check
+
+Checks GitHub releases for an agent-v2 binary matching the current OS and architecture.
+
+**Request Body (JSON, optional):**
+```json
+{
+  "channel": "candidate"
+}
+```
+
+`channel` may be `candidate` or `stable`. If omitted, the configured `auto_update.channel` is used.
+
+**Response (JSON):**
+```json
+{
+  "current_version": "v2.0.0-alpha.3",
+  "build_commit": "abcdef0",
+  "channel": "candidate",
+  "latest_version": "v2.0.0-alpha.4",
+  "update_available": true,
+  "installed": false,
+  "restart_required": false,
+  "prerelease": true,
+  "release_url": "https://github.com/AS214933/dn42-bot/releases/tag/v2.0.0-alpha.4",
+  "asset_name": "agent-v2-linux-amd64"
+}
+```
+
+**Status Codes:**
+- `200 OK` — Check succeeded
+- `403 Forbidden` — Invalid or missing token
+- `502 Bad Gateway` — Release lookup failed
+
+### POST /update/apply
+
+Downloads and installs the selected release asset to `auto_update.agent_path`. If an update is installed, the agent responds before restarting `auto_update.service_name` through `systemctl`.
+
+**Request Body (JSON, optional):**
+```json
+{
+  "channel": "candidate",
+  "force": false
+}
+```
+
+`force: true` reinstalls the selected release even when the current version already matches.
+
+**Status Codes:**
+- `200 OK` — No update was installed
+- `202 Accepted` — Update installed; restart scheduled
+- `403 Forbidden` — Invalid or missing token
+- `400 Bad Request` — Invalid JSON
+- `502 Bad Gateway` — Release lookup, download, install, or restart preparation failed
+
+---
+
 ### POST /errorlist
 
 Returns a list of all peers with detected issues (config mismatches, stale handshakes, BIRD session errors).
