@@ -423,6 +423,9 @@ func TestTraceHandler_NativeNextTraceSuccess(t *testing.T) {
 		if method != ntrace.ICMPTrace {
 			t.Fatalf("method = %q, want %q", method, ntrace.ICMPTrace)
 		}
+		if config.BeginHop != 1 {
+			t.Fatalf("BeginHop = %d, want 1", config.BeginHop)
+		}
 		if config.MaxHops != 30 {
 			t.Fatalf("MaxHops = %d, want 30", config.MaxHops)
 		}

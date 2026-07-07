@@ -119,6 +119,7 @@ func runNativeTrace(ctx context.Context, target string) (string, error) {
 
 	result, err := ntraceTraceroute(ctx, ntrace.ICMPTrace, ntrace.Config{
 		DstIP:            dstIP,
+		BeginHop:         1,
 		MaxHops:          30,
 		NumMeasurements:  1,
 		MaxAttempts:      1,
