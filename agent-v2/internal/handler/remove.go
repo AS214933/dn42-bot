@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -60,10 +61,15 @@ func (h *RemoveHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func readBody(r *http.Request) (string, error) {
 	defer r.Body.Close()
-	buf := make([]byte, 1024)
-	n, err := r.Body.Read(buf)
-	if n == 0 {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1025))
+	if err != nil {
+		return "", err
+	}
+	if len(body) == 0 {
 		return "", fmt.Errorf("empty body")
 	}
-	return string(buf[:n]), err
+	if len(body) > 1024 {
+		return "", fmt.Errorf("body too large")
+	}
+	return string(body), nil
 }

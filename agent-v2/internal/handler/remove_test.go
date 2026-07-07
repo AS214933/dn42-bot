@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -77,8 +78,8 @@ func TestRemoveHandler_InvalidASN(t *testing.T) {
 func TestRemoveHandler_Success(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{
-		Secret:       "s",
-		BirdCtlPath:  "/run/bird.ctl",
+		Secret:           "s",
+		BirdCtlPath:      "/run/bird.ctl",
 		VnstatAutoRemove: false,
 	}
 
@@ -114,6 +115,34 @@ func TestRemoveHandler_Success(t *testing.T) {
 			t.Error("vnstat should not be called when VnstatAutoRemove is false")
 		}
 	}
+}
+
+func TestRemoveHandler_BodyReadEOFWithData(t *testing.T) {
+	t.Parallel()
+	cfg := &config.Config{
+		Secret:      "s",
+		BirdCtlPath: "/run/bird.ctl",
+	}
+
+	var cmds []string
+	mockRun := func(_ context.Context, name string, args []string, _ time.Duration) (string, error) {
+		cmds = append(cmds, name+" "+strings.Join(args, " "))
+		return "", nil
+	}
+
+	h := NewRemoveHandler(cfg, mockRun, noopRemove)
+	req := httptest.NewRequest(http.MethodPost, "/remove", nil)
+	req.Body = &eofAfterReadCloser{data: []byte("4242421234")}
+	req.ContentLength = int64(len("4242421234"))
+	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	assertContains(t, cmds, "wg-quick down dn42-4242421234")
 }
 
 func TestRemoveHandler_VnstatAutoRemove(t *testing.T) {
@@ -171,6 +200,22 @@ func noopRun(_ context.Context, _ string, _ []string, _ time.Duration) (string, 
 }
 
 func noopRemove(_ string) error { return nil }
+
+type eofAfterReadCloser struct {
+	data []byte
+	done bool
+}
+
+func (r *eofAfterReadCloser) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.EOF
+	}
+	r.done = true
+	n := copy(p, r.data)
+	return n, io.EOF
+}
+
+func (r *eofAfterReadCloser) Close() error { return nil }
 
 func assertContains(t *testing.T, haystack []string, needle string) {
 	t.Helper()
