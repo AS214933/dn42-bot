@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,14 +14,33 @@ import (
 )
 
 type fakeIPResolver struct {
-	addrs []net.IPAddr
-	err   error
-	calls []string
+	mu        sync.Mutex
+	addrs     []net.IPAddr
+	err       error
+	calls     []string
+	ptrs      map[string][]string
+	addrErr   error
+	addrCalls []string
 }
 
 func (r *fakeIPResolver) LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.calls = append(r.calls, host)
 	return r.addrs, r.err
+}
+
+func (r *fakeIPResolver) LookupAddr(ctx context.Context, addr string) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.addrCalls = append(r.addrCalls, addr)
+	if r.addrErr != nil {
+		return nil, r.addrErr
+	}
+	if r.ptrs == nil {
+		return nil, nil
+	}
+	return r.ptrs[addr], nil
 }
 
 func TestPingHandler_Success(t *testing.T) {
@@ -549,6 +569,60 @@ func TestTraceHandler_NativeCustomResolver(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "traceroute to trace.example (172.20.0.1)") {
 		t.Fatalf("expected resolved trace header, got %q", rec.Body.String())
+	}
+}
+
+func TestTraceHandler_NativeCustomResolverRDNS(t *testing.T) {
+	oldTraceroute := ntraceTraceroute
+	ntraceTraceroute = func(ctx context.Context, method ntrace.Method, config ntrace.Config) (*ntrace.Result, error) {
+		if got := config.DstIP.String(); got != "198.51.100.9" {
+			t.Fatalf("DstIP = %q, want resolver IP", got)
+		}
+		return &ntrace.Result{Hops: [][]ntrace.Hop{
+			{
+				{
+					Success: true,
+					Address: &net.IPAddr{IP: net.ParseIP("192.0.2.1")},
+					TTL:     1,
+					RTT:     time.Millisecond,
+				},
+			},
+			{
+				{
+					Success: true,
+					Address: &net.IPAddr{IP: net.ParseIP("192.0.2.2")},
+					TTL:     2,
+					RTT:     2 * time.Millisecond,
+				},
+			},
+		}}, nil
+	}
+	t.Cleanup(func() { ntraceTraceroute = oldTraceroute })
+
+	resolver := &fakeIPResolver{
+		addrs: []net.IPAddr{{IP: net.ParseIP("198.51.100.9")}},
+		ptrs: map[string][]string{
+			"192.0.2.1": []string{"hop-one.example."},
+			"192.0.2.2": []string{"hop-two.example."},
+		},
+	}
+	handler := TraceHandler(nil, resolver)
+	req := httptest.NewRequest(http.MethodPost, "/trace", strings.NewReader("trace.example"))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "hop-one.example (192.0.2.1)") {
+		t.Fatalf("expected first hop PTR name, got %q", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "hop-two.example (192.0.2.2)") {
+		t.Fatalf("expected second hop PTR name, got %q", rec.Body.String())
+	}
+	if strings.Join(resolver.addrCalls, ",") != "192.0.2.1,192.0.2.2" &&
+		strings.Join(resolver.addrCalls, ",") != "192.0.2.2,192.0.2.1" {
+		t.Fatalf("reverse lookup calls = %v, want both hop IPs", resolver.addrCalls)
 	}
 }
 

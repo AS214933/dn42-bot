@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	ntrace "github.com/nxtrace/NTrace-core/trace"
@@ -142,6 +143,8 @@ func runNativeTrace(ctx context.Context, target string, resolver IPResolver) (st
 		return "", err
 	}
 
+	enrichTraceRDNS(ctx, resolver, result)
+
 	return formatNativeTrace(target, dstIP, result), nil
 }
 
@@ -190,6 +193,72 @@ func formatNativeTrace(target string, dstIP net.IP, result *ntrace.Result) strin
 		}
 	}
 	return sb.String()
+}
+
+const traceRDNSLookupTimeout = time.Second
+
+func enrichTraceRDNS(ctx context.Context, resolver IPResolver, result *ntrace.Result) {
+	if resolver == nil || result == nil {
+		return
+	}
+	reverseResolver, ok := resolver.(addrResolver)
+	if !ok {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, traceRDNSLookupTimeout)
+	defer cancel()
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	for i := range result.Hops {
+		for j := range result.Hops[i] {
+			hop := &result.Hops[i][j]
+			if !hop.Success {
+				continue
+			}
+			ip := traceHopIP(*hop)
+			if ip == nil {
+				continue
+			}
+
+			wg.Add(1)
+			go func(hop *ntrace.Hop, ip net.IP) {
+				defer wg.Done()
+				select {
+				case sem <- struct{}{}:
+					defer func() { <-sem }()
+				case <-ctx.Done():
+					return
+				}
+
+				names, err := reverseResolver.LookupAddr(ctx, ip.String())
+				if err != nil || len(names) == 0 {
+					return
+				}
+				hop.Hostname = canonicalTraceHostname(names[0])
+			}(hop, append(net.IP(nil), ip...))
+		}
+	}
+
+	wg.Wait()
+}
+
+func traceHopIP(hop ntrace.Hop) net.IP {
+	switch addr := hop.Address.(type) {
+	case *net.IPAddr:
+		return addr.IP
+	case *net.UDPAddr:
+		return addr.IP
+	case *net.TCPAddr:
+		return addr.IP
+	default:
+		return net.ParseIP(traceHopAddress(hop))
+	}
+}
+
+func canonicalTraceHostname(name string) string {
+	return strings.TrimSuffix(strings.TrimSpace(name), ".")
 }
 
 func traceHopAddress(hop ntrace.Hop) string {

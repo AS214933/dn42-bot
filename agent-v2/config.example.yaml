@@ -26,5 +26,6 @@ default_mtu: 1420
 server_url: ""
 
 # Optional DNS servers for built-in ping/trace/tcping hostname resolution.
-# Accepts IP, IP:port, or [IPv6]:port. Empty list uses system DNS.
+# Configured servers are also used for native trace rDNS/PTR lookups.
+# Accepts IP, IP:port, or [IPv6]:port. Empty list uses system DNS for hostname resolution.
 dns_servers: []
