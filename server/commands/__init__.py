@@ -15,6 +15,7 @@ import commands.statistics.peer_list
 import commands.statistics.rank
 import commands.statistics.stats
 import commands.tools.agent_config
+import commands.tools.agent_update
 import commands.tools.ban_command
 import commands.tools.errorlist
 import commands.tools.all_in_one

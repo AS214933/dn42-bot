@@ -37,25 +37,29 @@ type UpdateStatus struct {
 }
 
 type ReleaseUpdaterDeps struct {
-	HTTPClient     *http.Client
-	APIBaseURL     string
-	RunCommand     func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error)
-	CurrentVersion string
-	BuildCommit    string
-	GOOS           string
-	GOARCH         string
+	HTTPClient          *http.Client
+	APIBaseURL          string
+	RunCommand          func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error)
+	CurrentVersion      string
+	BuildCommit         string
+	GOOS                string
+	GOARCH              string
+	UseDownloadProxy    bool
+	DownloadProxyPrefix string
 }
 
 type ReleaseUpdater struct {
-	cfg            config.AutoUpdateConfig
-	httpClient     *http.Client
-	apiBaseURL     string
-	runCmd         func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error)
-	currentVersion string
-	buildCommit    string
-	goos           string
-	goarch         string
-	mu             sync.Mutex
+	cfg                 config.AutoUpdateConfig
+	httpClient          *http.Client
+	apiBaseURL          string
+	runCmd              func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error)
+	currentVersion      string
+	buildCommit         string
+	goos                string
+	goarch              string
+	useDownloadProxy    bool
+	downloadProxyPrefix string
+	mu                  sync.Mutex
 }
 
 type githubRelease struct {
@@ -70,6 +74,8 @@ type githubAsset struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
+
+const defaultDownloadProxyPrefix = "https://cdn.akaere.online/"
 
 func NewReleaseUpdater(cfg config.AutoUpdateConfig, deps ReleaseUpdaterDeps) *ReleaseUpdater {
 	client := deps.HTTPClient
@@ -100,16 +106,19 @@ func NewReleaseUpdater(cfg config.AutoUpdateConfig, deps ReleaseUpdaterDeps) *Re
 	if goarch == "" {
 		goarch = runtime.GOARCH
 	}
+	downloadProxyPrefix := normalizeDownloadProxyPrefix(deps.DownloadProxyPrefix)
 
 	return &ReleaseUpdater{
-		cfg:            cfg,
-		httpClient:     client,
-		apiBaseURL:     apiBaseURL,
-		runCmd:         runCmd,
-		currentVersion: currentVersion,
-		buildCommit:    buildCommit,
-		goos:           goos,
-		goarch:         goarch,
+		cfg:                 cfg,
+		httpClient:          client,
+		apiBaseURL:          apiBaseURL,
+		runCmd:              runCmd,
+		currentVersion:      currentVersion,
+		buildCommit:         buildCommit,
+		goos:                goos,
+		goarch:              goarch,
+		useDownloadProxy:    deps.UseDownloadProxy,
+		downloadProxyPrefix: downloadProxyPrefix,
 	}
 }
 
@@ -266,7 +275,7 @@ func (u *ReleaseUpdater) installAsset(ctx context.Context, asset *githubAsset) e
 	defer os.RemoveAll(tmpDir)
 
 	tmpPath := filepath.Join(tmpDir, filepath.Base(u.cfg.AgentPath)+".new")
-	if err := downloadFile(ctx, u.httpClient, asset.BrowserDownloadURL, tmpPath); err != nil {
+	if err := downloadFile(ctx, u.httpClient, u.downloadURL(asset.BrowserDownloadURL), tmpPath); err != nil {
 		return err
 	}
 	if err := os.Chmod(tmpPath, 0755); err != nil {
@@ -280,6 +289,10 @@ func (u *ReleaseUpdater) installAsset(ctx context.Context, asset *githubAsset) e
 
 func (u *ReleaseUpdater) assetName() string {
 	return "agent-v2-" + u.goos + "-" + u.goarch
+}
+
+func (u *ReleaseUpdater) downloadURL(rawURL string) string {
+	return proxiedGithubDownloadURL(rawURL, u.useDownloadProxy, u.downloadProxyPrefix)
 }
 
 func findReleaseAsset(release *githubRelease, name string) *githubAsset {
@@ -315,6 +328,28 @@ func downloadFile(ctx context.Context, client *http.Client, url, path string) er
 		return fmt.Errorf("write downloaded agent: %w", err)
 	}
 	return nil
+}
+
+func normalizeDownloadProxyPrefix(prefix string) string {
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		prefix = defaultDownloadProxyPrefix
+	}
+	return strings.TrimRight(prefix, "/") + "/"
+}
+
+func proxiedGithubDownloadURL(rawURL string, enabled bool, proxyPrefix string) string {
+	if !enabled {
+		return rawURL
+	}
+	proxyPrefix = normalizeDownloadProxyPrefix(proxyPrefix)
+	if strings.HasPrefix(rawURL, proxyPrefix) {
+		return rawURL
+	}
+	if !strings.HasPrefix(rawURL, "https://github.com/") {
+		return rawURL
+	}
+	return proxyPrefix + rawURL
 }
 
 func updateChannel(override, configured string) (string, error) {

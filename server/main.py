@@ -203,6 +203,7 @@ base.cmd_list = {
     "topology": ("Show IGP network topology 显示 IGP 网络拓扑", True),
     "matrix": ("Show inter-node latency matrix 显示节点间延迟矩阵", True),
     "agent_config": ("View/modify agent config 查看/修改 Agent 配置", False),
+    "update": ("Remote update agent-v2 nodes 远程更新 Agent v2 节点", False),
     "ban_command": ("Ban/unban commands for non-admin users 禁用/启用指令", False),
     "errorlist": ("List all faulty peers 列出所有故障 Peer", False),
 }

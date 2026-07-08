@@ -43,7 +43,10 @@ func main() {
 
 	runCmd := service.RunCommand
 	dnsResolver := handler.NewDNSResolver(cfg.DNSServers)
-	updater := service.NewReleaseUpdater(cfg.AutoUpdate, service.ReleaseUpdaterDeps{RunCommand: runCmd})
+	updater := service.NewReleaseUpdater(cfg.AutoUpdate, service.ReleaseUpdaterDeps{
+		RunCommand:       runCmd,
+		UseDownloadProxy: cfg.NetSupport.CN,
+	})
 	go updater.Run(ctx)
 
 	// /version — no auth
