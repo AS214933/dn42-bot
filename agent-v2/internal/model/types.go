@@ -34,15 +34,15 @@ func (p *PeerInfo) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		ASN              int             `json:"ASN"`
 		Contact          string          `json:"Contact"`
-		Port             int             `json:"Port"`
+		Port             json.RawMessage `json:"Port"`
 		IPv4             string          `json:"IPv4"`
 		IPv6             string          `json:"IPv6"`
 		PublicKey        string          `json:"PublicKey"`
-		PresharedKey     string          `json:"PresharedKey"`
+		PresharedKey     json.RawMessage `json:"PresharedKey"`
 		Clearnet         json.RawMessage `json:"Clearnet"`
 		Channel          string          `json:"Channel"`
 		MPBGP            string          `json:"MP-BGP"`
-		MTU              int             `json:"MTU"`
+		MTU              json.RawMessage `json:"MTU"`
 		RequestLinkLocal string          `json:"Request-LinkLocal"`
 	}
 
@@ -54,19 +54,31 @@ func (p *PeerInfo) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
+	port, err := decodeOptionalInt(raw.Port, "Port")
+	if err != nil {
+		return err
+	}
+	mtu, err := decodeOptionalInt(raw.MTU, "MTU")
+	if err != nil {
+		return err
+	}
+	presharedKey, err := decodeOptionalString(raw.PresharedKey, "PresharedKey")
+	if err != nil {
+		return err
+	}
 
 	*p = PeerInfo{
 		ASN:              raw.ASN,
 		Contact:          raw.Contact,
-		Port:             raw.Port,
+		Port:             port,
 		IPv4:             raw.IPv4,
 		IPv6:             raw.IPv6,
 		PublicKey:        raw.PublicKey,
-		PresharedKey:     raw.PresharedKey,
+		PresharedKey:     presharedKey,
 		Clearnet:         clearnet,
 		Channel:          raw.Channel,
 		MPBGP:            raw.MPBGP,
-		MTU:              raw.MTU,
+		MTU:              mtu,
 		RequestLinkLocal: raw.RequestLinkLocal,
 	}
 	return nil
@@ -93,6 +105,47 @@ func decodeOptionalClearnet(raw json.RawMessage) (*string, error) {
 	}
 
 	return nil, fmt.Errorf("Clearnet must be a string, null, or false")
+}
+
+func decodeOptionalString(raw json.RawMessage, field string) (string, error) {
+	value := strings.TrimSpace(string(raw))
+	if value == "" || value == "null" {
+		return "", nil
+	}
+
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return "", fmt.Errorf("%s must be a string or null", field)
+	}
+	return strings.TrimSpace(text), nil
+}
+
+func decodeOptionalInt(raw json.RawMessage, field string) (int, error) {
+	value := strings.TrimSpace(string(raw))
+	if value == "" || value == "null" {
+		return 0, nil
+	}
+
+	var number int
+	if err := json.Unmarshal(raw, &number); err == nil {
+		return number, nil
+	}
+
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return 0, fmt.Errorf("%s must be an integer, quoted integer, or null", field)
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return 0, nil
+	}
+	if _, err := fmt.Sscanf(text, "%d", &number); err != nil {
+		return 0, fmt.Errorf("%s must be an integer, quoted integer, or null", field)
+	}
+	if fmt.Sprintf("%d", number) != text {
+		return 0, fmt.Errorf("%s must be an integer, quoted integer, or null", field)
+	}
+	return number, nil
 }
 
 // BirdSessionStatus represents a BIRD BGP session state.

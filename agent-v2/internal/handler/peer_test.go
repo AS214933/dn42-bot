@@ -434,6 +434,67 @@ func TestPeerHandler_WGConfigClearnetCompatibility(t *testing.T) {
 	}
 }
 
+func TestPeerHandler_AdminNoEndpointPayloadCompatibility(t *testing.T) {
+	t.Parallel()
+	cfg := peerTestConfig()
+	wgDir, birdDir := setupDirs(t)
+	cmd := newCmdRecord()
+	handler := newPeerHandler(cfg, wgDir, birdDir, cmd.Run)
+
+	peerJSON := `{
+		"Region": "can",
+		"ASN": 4242420774,
+		"Channel": "IPv6 & IPv4",
+		"MP-BGP": "IPv6",
+		"ENH": true,
+		"IPv6": "fe80::774",
+		"IPv4": "Not enabled",
+		"Request-LinkLocal": "fe80::2999:233",
+		"Clearnet": null,
+		"PublicKey": "dvS+ggE92z2Edu76iwnRkzq9E+U7fh8HcsMemdYQKDE=",
+		"PresharedKey": null,
+		"Port": "23374",
+		"MTU": "1420",
+		"Contact": "XIEXILIN"
+	}`
+
+	rec := doRequest(handler, http.MethodPost, "/peer", peerJSON, map[string]string{
+		"Content-Type": "application/json",
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	wgContent, _ := os.ReadFile(filepath.Join(wgDir, "dn42-4242420774.conf"))
+	wg := string(wgContent)
+	for _, want := range []string{
+		"ListenPort = 23374",
+		"MTU = 1420",
+		"PostUp = ip addr add fe80::2999:233/64 peer fe80::774/64 dev %i",
+		"PublicKey = dvS+ggE92z2Edu76iwnRkzq9E+U7fh8HcsMemdYQKDE=",
+	} {
+		if !strings.Contains(wg, want) {
+			t.Fatalf("WG config missing %q:\n%s", want, wg)
+		}
+	}
+	if strings.Contains(wg, "Endpoint") {
+		t.Fatalf("expected no Endpoint when Clearnet is null:\n%s", wg)
+	}
+	if strings.Contains(wg, "PresharedKey") {
+		t.Fatalf("expected no PresharedKey when PresharedKey is null:\n%s", wg)
+	}
+
+	birdContent, _ := os.ReadFile(filepath.Join(birdDir, "4242420774.conf"))
+	bird := string(birdContent)
+	if !strings.Contains(bird, "protocol bgp DN42_4242420774_v6") {
+		t.Fatalf("BIRD config missing v6 protocol:\n%s", bird)
+	}
+	if strings.Contains(bird, "DN42_4242420774_v4") {
+		t.Fatalf("BIRD config should use MP-BGP over v6 only:\n%s", bird)
+	}
+}
+
 func TestPeerHandler_IPClassification_ULA(t *testing.T) {
 	t.Parallel()
 	cfg := peerTestConfig()
