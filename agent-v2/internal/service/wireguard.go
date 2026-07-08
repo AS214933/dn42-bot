@@ -66,8 +66,8 @@ func GenerateConfig(peer model.PeerInfo, cfg *config.Config) string {
 	if peer.PresharedKey != "" {
 		sb.WriteString(fmt.Sprintf("PresharedKey = %s\n", peer.PresharedKey))
 	}
-	if peer.Clearnet != nil {
-		sb.WriteString(fmt.Sprintf("Endpoint = %s\n", *peer.Clearnet))
+	if peer.Clearnet != nil && strings.TrimSpace(*peer.Clearnet) != "" {
+		sb.WriteString(fmt.Sprintf("Endpoint = %s\n", strings.TrimSpace(*peer.Clearnet)))
 	}
 	sb.WriteString("AllowedIPs = 172.20.0.0/14, 10.0.0.0/8, 172.31.0.0/16, fd00::/8, fe80::/64\n")
 

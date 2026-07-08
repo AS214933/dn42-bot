@@ -1,5 +1,11 @@
 package model
 
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
 // NetSupport describes which network protocols an agent supports.
 type NetSupport struct {
 	IPv4    bool `json:"ipv4"`
@@ -24,6 +30,71 @@ type PeerInfo struct {
 	RequestLinkLocal string  `json:"Request-LinkLocal"`
 }
 
+func (p *PeerInfo) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		ASN              int             `json:"ASN"`
+		Contact          string          `json:"Contact"`
+		Port             int             `json:"Port"`
+		IPv4             string          `json:"IPv4"`
+		IPv6             string          `json:"IPv6"`
+		PublicKey        string          `json:"PublicKey"`
+		PresharedKey     string          `json:"PresharedKey"`
+		Clearnet         json.RawMessage `json:"Clearnet"`
+		Channel          string          `json:"Channel"`
+		MPBGP            string          `json:"MP-BGP"`
+		MTU              int             `json:"MTU"`
+		RequestLinkLocal string          `json:"Request-LinkLocal"`
+	}
+
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	clearnet, err := decodeOptionalClearnet(raw.Clearnet)
+	if err != nil {
+		return err
+	}
+
+	*p = PeerInfo{
+		ASN:              raw.ASN,
+		Contact:          raw.Contact,
+		Port:             raw.Port,
+		IPv4:             raw.IPv4,
+		IPv6:             raw.IPv6,
+		PublicKey:        raw.PublicKey,
+		PresharedKey:     raw.PresharedKey,
+		Clearnet:         clearnet,
+		Channel:          raw.Channel,
+		MPBGP:            raw.MPBGP,
+		MTU:              raw.MTU,
+		RequestLinkLocal: raw.RequestLinkLocal,
+	}
+	return nil
+}
+
+func decodeOptionalClearnet(raw json.RawMessage) (*string, error) {
+	value := strings.TrimSpace(string(raw))
+	if value == "" || value == "null" {
+		return nil, nil
+	}
+
+	var endpoint string
+	if err := json.Unmarshal(raw, &endpoint); err == nil {
+		endpoint = strings.TrimSpace(endpoint)
+		if endpoint == "" {
+			return nil, nil
+		}
+		return &endpoint, nil
+	}
+
+	var enabled bool
+	if err := json.Unmarshal(raw, &enabled); err == nil && !enabled {
+		return nil, nil
+	}
+
+	return nil, fmt.Errorf("Clearnet must be a string, null, or false")
+}
+
 // BirdSessionStatus represents a BIRD BGP session state.
 type BirdSessionStatus struct {
 	State  string            `json:"State"`
@@ -46,9 +117,9 @@ type BabelNeighbor struct {
 
 // BabelInterface represents a Babel routing protocol interface.
 type BabelInterface struct {
-	Interface  string  `json:"interface"`
-	NextHopV4  *string `json:"next_hop_v4"`
-	NextHopV6  *string `json:"next_hop_v6"`
+	Interface string  `json:"interface"`
+	NextHopV4 *string `json:"next_hop_v4"`
+	NextHopV6 *string `json:"next_hop_v6"`
 }
 
 // IGPTopologyResult holds the result of an IGP topology query.

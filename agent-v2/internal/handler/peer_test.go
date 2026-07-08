@@ -396,6 +396,44 @@ func TestPeerHandler_WGConfigNoClearnet(t *testing.T) {
 	}
 }
 
+func TestPeerHandler_WGConfigClearnetCompatibility(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		clearnet string
+	}{
+		{name: "false", clearnet: `false`},
+		{name: "empty string", clearnet: `""`},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := peerTestConfig()
+			wgDir, birdDir := setupDirs(t)
+			cmd := newCmdRecord()
+			handler := newPeerHandler(cfg, wgDir, birdDir, cmd.Run)
+
+			peerJSON := strings.Replace(defaultPeerJSON(), `"Clearnet": "peer.example.com:51820"`, `"Clearnet": `+tt.clearnet, 1)
+			rec := doRequest(handler, http.MethodPost, "/peer", peerJSON, map[string]string{
+				"Content-Type": "application/json",
+			})
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+
+			wgContent, _ := os.ReadFile(filepath.Join(wgDir, "dn42-4242421234.conf"))
+			if strings.Contains(string(wgContent), "Endpoint") {
+				t.Error("expected no Endpoint when Clearnet is empty-compatible")
+			}
+		})
+	}
+}
+
 func TestPeerHandler_IPClassification_ULA(t *testing.T) {
 	t.Parallel()
 	cfg := peerTestConfig()

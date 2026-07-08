@@ -13,17 +13,17 @@ func strPtr(s string) *string { return &s }
 
 func defaultTestPeer() model.PeerInfo {
 	return model.PeerInfo{
-		ASN:          4242421234,
-		Contact:      "test@example.com",
-		Port:         21234,
-		IPv4:         "172.22.167.101",
-		IPv6:         "fe80::1234",
-		PublicKey:     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-		PresharedKey:  "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
-		Clearnet:      strPtr("peer.example.com:51820"),
-		Channel:       "IPv6 & IPv4",
-		MPBGP:         "IPv6",
-		MTU:           1420,
+		ASN:              4242421234,
+		Contact:          "test@example.com",
+		Port:             21234,
+		IPv4:             "172.22.167.101",
+		IPv6:             "fe80::1234",
+		PublicKey:        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		PresharedKey:     "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+		Clearnet:         strPtr("peer.example.com:51820"),
+		Channel:          "IPv6 & IPv4",
+		MPBGP:            "IPv6",
+		MTU:              1420,
 		RequestLinkLocal: "",
 	}
 }
@@ -91,6 +91,19 @@ func TestGenerateConfigNoClearnet(t *testing.T) {
 
 	if strings.Contains(result, "Endpoint") {
 		t.Error("expected no Endpoint line when Clearnet is nil")
+	}
+}
+
+func TestGenerateConfigEmptyClearnet(t *testing.T) {
+	t.Parallel()
+	peer := defaultTestPeer()
+	peer.Clearnet = strPtr("  ")
+	cfg := defaultTestConfig()
+
+	result := GenerateConfig(peer, cfg)
+
+	if strings.Contains(result, "Endpoint") {
+		t.Error("expected no Endpoint line when Clearnet is empty")
 	}
 }
 
