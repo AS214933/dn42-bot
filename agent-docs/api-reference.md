@@ -1,10 +1,10 @@
 # Agent API Reference
 
-All endpoints use POST method. The agent listens on the address configured in `config.yaml` (default: `0.0.0.0:54321`).
+Management endpoints use POST. The optional bird-lg-compatible looking glass endpoints use GET. The agent listens on the address configured in `config.yaml` (default: `0.0.0.0:54321`).
 
 ## Authentication
 
-All endpoints except `/version` require authentication via the `X-DN42-Bot-Api-Secret-Token` header. The token must match the `SECRET` value in the agent's `config.yaml`.
+All management endpoints except `/version` require authentication via the `X-DN42-Bot-Api-Secret-Token` header. The optional `/bird`, `/bird6`, `/traceroute`, and `/traceroute6` routes use the `looking_glass` source policy instead because bird-lg-go frontend does not send this header.
 
 ```
 X-DN42-Bot-Api-Secret-Token: <your-secret-token>
@@ -53,7 +53,7 @@ Returns selected agent configuration fields.
 
 If `keys` is omitted or empty, all displayable fields are returned.
 
-Available keys: `DEFAULT_MTU`, `OPEN`, `MAX_PEERS`, `MIN_PEER_REQUIREMENT`, `EXTRA_MSG`, `MY_DN42_IPv4_ADDRESS`, `VNSTAT_AUTO_ADD`, `VNSTAT_AUTO_REMOVE`, `BIRD_CTL_PATH`, `BIRD_TABLE_4`, `BIRD_TABLE_6`, `NET_SUPPORT`
+Available keys: `DEFAULT_MTU`, `OPEN`, `MAX_PEERS`, `MIN_PEER_REQUIREMENT`, `EXTRA_MSG`, `MY_DN42_IPv4_ADDRESS`, `VNSTAT_AUTO_ADD`, `VNSTAT_AUTO_REMOVE`, `BIRD_CTL_PATH`, `BIRD_TABLE_4`, `BIRD_TABLE_6`, `NET_SUPPORT`, `LOOKING_GLASS`
 
 **Response (JSON):**
 ```json
@@ -88,6 +88,8 @@ To get all fields:
 curl -X POST http://agent-host:54321/config/get \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token"
 ```
+
+`LOOKING_GLASS` returns the normalized enable flags, source lists, concurrency limits, timeout, query limit, and output limit.
 
 ---
 
@@ -538,6 +540,33 @@ curl -X POST http://agent-host:54321/trace \
   -H "X-DN42-Bot-Api-Secret-Token: my-secret-token" \
   -d "172.20.x.x"
 ```
+
+---
+
+### GET /bird, /bird6, /traceroute, /traceroute6
+
+These routes implement the bird-lg-go proxy protocol when `looking_glass.enabled` is true. They use the `q` query parameter and the Looking Glass source policy instead of the management token. `/bird6` is an alias of `/bird`, and `/traceroute6` is an alias of `/traceroute`, matching bird-lg-go v1.4.7 behavior.
+
+`/bird` accepts only the `show protocols` and `show route` BIRD command families. Every BIRD connection enters restricted mode before the query is sent. The traceroute routes use the same built-in NTrace engine as `POST /trace` and can be disabled independently.
+
+```bash
+curl 'http://agent-host:54321/bird?q=show%20protocols'
+curl 'http://agent-host:54321/traceroute?q=172.20.0.1'
+```
+
+Responses are plain text and capped by `looking_glass.max_output_bytes`. BIRD command errors are returned as plain-text results for frontend compatibility.
+
+**Status Codes:**
+
+- `200 OK` — Query output, including BIRD command error text
+- `400 Bad Request` — Missing/invalid query or traceroute target
+- `403 Forbidden` — Source denied or BIRD command outside the read-only allowlist
+- `405 Method Not Allowed` — Non-GET method
+- `414 URI Too Long` — Decoded query exceeds the configured limit
+- `500 Internal Server Error` — BIRD connection/protocol or traceroute execution failure
+- `501 Not Implemented` — Traceroute is disabled
+- `503 Service Unavailable` — Configured concurrency limit reached
+- `504 Gateway Timeout` — Configured request timeout reached
 
 ---
 

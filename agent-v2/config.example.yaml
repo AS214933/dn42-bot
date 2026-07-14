@@ -30,6 +30,21 @@ server_url: ""
 # Accepts IP, IP:port, or [IPv6]:port. Empty list uses system DNS for hostname resolution.
 dns_servers: []
 
+# Optional bird-lg-go proxy-compatible endpoints on the agent API port.
+# The feature is disabled by default. allowed_cidrs accepts CIDR/single-IP
+# entries and the selectors any, public, private, and dn42. An empty allowed
+# list denies every source; disallowed_cidrs always takes priority.
+looking_glass:
+  enabled: false
+  allowed_cidrs: []
+  disallowed_cidrs: []
+  traceroute_enabled: true
+  bird_max_concurrent: 16
+  traceroute_max_concurrent: 10
+  request_timeout: "15s"
+  max_query_length: 4096
+  max_output_bytes: 65536
+
 # Manual update endpoints always use this configuration. Set enabled=true to
 # let the agent periodically install newer GitHub release binaries by itself.
 # Channel "candidate" includes prereleases such as alpha/beta/rc; "stable"

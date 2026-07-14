@@ -21,6 +21,7 @@ var displayFields = map[string]bool{
 	"BIRD_TABLE_4":         true,
 	"BIRD_TABLE_6":         true,
 	"NET_SUPPORT":          true,
+	"LOOKING_GLASS":        true,
 }
 
 func ConfigGetHandler(cfg *config.Config) http.HandlerFunc {
@@ -86,6 +87,28 @@ func buildConfigResponse(cfg *config.Config, keys []string) map[string]interface
 				IPv6:    cfg.NetSupport.IPv6,
 				IPv4NAT: cfg.NetSupport.IPv4NAT,
 				CN:      cfg.NetSupport.CN,
+			}
+		case "LOOKING_GLASS":
+			result[key] = struct {
+				Enabled                 bool     `json:"enabled"`
+				AllowedCIDRs            []string `json:"allowed_cidrs"`
+				DisallowedCIDRs         []string `json:"disallowed_cidrs"`
+				TracerouteEnabled       bool     `json:"traceroute_enabled"`
+				BirdMaxConcurrent       int      `json:"bird_max_concurrent"`
+				TracerouteMaxConcurrent int      `json:"traceroute_max_concurrent"`
+				RequestTimeout          string   `json:"request_timeout"`
+				MaxQueryLength          int      `json:"max_query_length"`
+				MaxOutputBytes          int      `json:"max_output_bytes"`
+			}{
+				Enabled:                 cfg.LookingGlass.Enabled,
+				AllowedCIDRs:            append([]string{}, cfg.LookingGlass.AllowedCIDRs...),
+				DisallowedCIDRs:         append([]string{}, cfg.LookingGlass.DisallowedCIDRs...),
+				TracerouteEnabled:       cfg.LookingGlass.TracerouteEnabled,
+				BirdMaxConcurrent:       cfg.LookingGlass.BirdMaxConcurrent,
+				TracerouteMaxConcurrent: cfg.LookingGlass.TracerouteMaxConcurrent,
+				RequestTimeout:          cfg.LookingGlass.RequestTimeout.String(),
+				MaxQueryLength:          cfg.LookingGlass.MaxQueryLength,
+				MaxOutputBytes:          cfg.LookingGlass.MaxOutputBytes,
 			}
 		}
 	}

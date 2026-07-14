@@ -32,6 +32,16 @@ vnstat_auto_remove: false
 default_mtu: 1420
 server_url: ""
 dns_servers: []
+looking_glass:
+  enabled: false
+  allowed_cidrs: []
+  disallowed_cidrs: []
+  traceroute_enabled: true
+  bird_max_concurrent: 16
+  traceroute_max_concurrent: 10
+  request_timeout: "15s"
+  max_query_length: 4096
+  max_output_bytes: 65536
 auto_update:
   enabled: false
   channel: "candidate"
@@ -67,6 +77,7 @@ auto_update:
 | `default_mtu` | int | `1420` | No | Default MTU for WireGuard tunnels. Peers can override this per-peer. |
 | `server_url` | string | `""` | No | URL of the server this agent reports to. |
 | `dns_servers` | list of strings | `[]` | No | DNS servers used by built-in `ping`, `trace`, and `tcping` hostname resolution. Accepts `IP`, `IP:port`, or `[IPv6]:port`. Empty list uses system DNS. |
+| `looking_glass` | object | See below | No | Embedded bird-lg-go proxy-compatible read-only looking glass. |
 | `auto_update` | object | See below | No | GitHub release update settings for the bare-metal agent binary. |
 
 ## `net_support` Sub-Fields
@@ -114,6 +125,37 @@ The updater is intended for bare-metal deployments where the operator has alread
 | `agent_path` | `"/etc/dn42-agent/agent"` | Installed agent binary path to replace during update. |
 | `service_name` | `"dn42-agent.service"` | systemd service name restarted after an installed update. |
 | `service_path` | `"/etc/systemd/system/dn42-agent.service"` | systemd unit file path checked before restarting. |
+
+### `looking_glass`
+
+When enabled, the agent registers `GET /bird`, `/bird6`, `/traceroute`, and `/traceroute6` on its existing API port. These four routes do not use the agent API token because bird-lg-go frontend does not send it; source filtering is therefore mandatory. The BIRD session is always switched to restricted mode and only `show protocols` and `show route` commands are accepted.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `false` | Register the four bird-lg-compatible routes. |
+| `allowed_cidrs` | `[]` | Allowed source selectors, CIDRs, or individual IPs. An empty list denies all access. |
+| `disallowed_cidrs` | `[]` | Denied selectors, CIDRs, or individual IPs. Denials take priority over allowances. |
+| `traceroute_enabled` | `true` | Enable the two traceroute aliases using the agent's built-in NTrace engine. |
+| `bird_max_concurrent` | `16` | Maximum simultaneous BIRD socket queries. Valid range: 1-256. |
+| `traceroute_max_concurrent` | `10` | Maximum simultaneous traceroutes. Valid range: 1-64. |
+| `request_timeout` | `"15s"` | Per-request timeout, up to 2 minutes. |
+| `max_query_length` | `4096` | Maximum decoded `q` query length. Valid range: 1-4096 bytes. |
+| `max_output_bytes` | `65536` | Maximum response body size. Valid range: 1-65536 bytes. |
+
+The four built-in selectors are:
+
+- `any`: every valid IPv4 or IPv6 source.
+- `public`: globally routable Internet space excluding private, loopback, link-local, CGNAT, documentation, reserved, and DN42 address space.
+- `private`: RFC 1918 IPv4 and `fc00::/7` IPv6 ULA space.
+- `dn42`: `172.20.0.0/14`, the project-compatible `172.31.0.0/16` range, and `fd00::/8`.
+
+For a central frontend with fixed egress addresses, explicit `/32` and `/128` entries are preferred. The built-in combinations are:
+
+- Block public Internet: `allowed_cidrs: [any]` with `disallowed_cidrs: [public]`.
+- DN42 only: `allowed_cidrs: [dn42]` with an empty deny list.
+- Public Internet plus DN42: `allowed_cidrs: [public, dn42]` with an empty deny list.
+
+Source checks use the TCP peer address and do not trust proxy forwarding headers.
 
 ## Environment Variables
 

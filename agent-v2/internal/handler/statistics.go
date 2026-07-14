@@ -96,6 +96,13 @@ func runTrace(ctx context.Context, runner CommandRunner, target string, resolver
 	return runCommandTrace(ctx, runner, target)
 }
 
+// RunNativeTrace executes the built-in traceroute and formats its output for
+// consumers outside the authenticated diagnostics handler.
+func RunNativeTrace(ctx context.Context, target string, resolver IPResolver) (string, error) {
+	output, err := runNativeTrace(ctx, target, resolver)
+	return postProcessTrace(output), err
+}
+
 func runCommandTrace(ctx context.Context, runner CommandRunner, target string) (string, error) {
 	ctx1, cancel1 := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel1()

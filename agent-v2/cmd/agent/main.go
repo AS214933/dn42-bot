@@ -19,6 +19,7 @@ import (
 
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/handler"
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/lookingglass"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/middleware"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/service"
 )
@@ -51,6 +52,9 @@ func main() {
 
 	// /version — no auth
 	r.Post("/version", handler.VersionHandler())
+	if err := registerLookingGlassRoutes(r, cfg, dnsResolver); err != nil {
+		log.Fatalf("failed to configure looking glass: %v", err)
+	}
 
 	// Auth-protected group
 	r.Group(func(r chi.Router) {
@@ -131,10 +135,7 @@ func main() {
 	service.EnsureWGInterfacesUp(ctx, cfg, service.DefaultRecoveryDeps())
 
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port))
-	srv := &http.Server{
-		Addr:    addr,
-		Handler: r,
-	}
+	srv := newHTTPServer(addr, r)
 
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
@@ -150,13 +151,57 @@ func main() {
 	cancel()
 	log.Println("shutting down...")
 
-	shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("shutdown error: %v", err)
 	}
 	log.Println("server stopped")
+}
+
+func registerLookingGlassRoutes(r chi.Router, cfg *config.Config, resolver handler.IPResolver) error {
+	if !cfg.LookingGlass.Enabled {
+		return nil
+	}
+
+	var traceRunner lookingglass.TraceRunner
+	if cfg.LookingGlass.TracerouteEnabled {
+		traceRunner = func(ctx context.Context, target string, _ int) (string, error) {
+			return handler.RunNativeTrace(ctx, target, resolver)
+		}
+	}
+
+	lg, err := lookingglass.NewHandler(lookingglass.Config{
+		BirdSocket:              cfg.BirdCtlPath,
+		AllowedSources:          cfg.LookingGlass.AllowedCIDRs,
+		DisallowedSources:       cfg.LookingGlass.DisallowedCIDRs,
+		BirdMaxConcurrent:       cfg.LookingGlass.BirdMaxConcurrent,
+		TracerouteMaxConcurrent: cfg.LookingGlass.TracerouteMaxConcurrent,
+		RequestTimeout:          cfg.LookingGlass.RequestTimeout,
+		MaxQueryLength:          cfg.LookingGlass.MaxQueryLength,
+		MaxOutputBytes:          cfg.LookingGlass.MaxOutputBytes,
+	}, traceRunner)
+	if err != nil {
+		return err
+	}
+
+	for _, path := range []string{"/bird", "/bird6", "/traceroute", "/traceroute6"} {
+		r.Handle(path, lg)
+	}
+	return nil
+}
+
+func newHTTPServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      150 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    64 * 1024,
+	}
 }
 
 func countPeers(wgDir, birdDir string) (int, int, error) {

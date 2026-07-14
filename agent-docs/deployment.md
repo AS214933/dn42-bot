@@ -123,6 +123,16 @@ dns_servers:
   - 1.1.1.1
 ```
 
+## bird-lg-go Frontend Integration
+
+Enable `looking_glass` in the agent config to replace a separately deployed bird-lg-go proxy. The compatible routes share the existing agent port (`54321` by default), so the frontend only needs:
+
+```dotenv
+BIRDLG_PROXY_PORT=54321
+```
+
+Keep the existing frontend server/domain settings. Allow the frontend's fixed egress IPs in `looking_glass.allowed_cidrs`, and restrict port 54321 at the host firewall to the bot server and frontend wherever possible. The looking glass routes do not accept the management token; an empty allowed list denies all access. The BIRD control socket mount shown above is required, and built-in traceroute still requires `NET_RAW` or root.
+
 ## Systemd Service (Non-Docker)
 
 For non-Docker deployments, run the agent as a systemd service:

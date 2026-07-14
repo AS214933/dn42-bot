@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -56,6 +57,19 @@ auto_update:
   agent_path: "/var/lib/dn42-agent/agent"
   service_name: "custom-agent.service"
   service_path: "/etc/systemd/system/custom-agent.service"
+looking_glass:
+  enabled: true
+  allowed_cidrs:
+    - "public"
+    - "172.20.0.0/14"
+  disallowed_cidrs:
+    - "192.0.2.1"
+  traceroute_enabled: true
+  bird_max_concurrent: 32
+  traceroute_max_concurrent: 8
+  request_timeout: "20s"
+  max_query_length: 2048
+  max_output_bytes: 32768
 `
 	path := writeTempConfig(t, yaml)
 
@@ -166,6 +180,21 @@ auto_update:
 	if cfg.AutoUpdate.ServicePath != "/etc/systemd/system/custom-agent.service" {
 		t.Errorf("AutoUpdate.ServicePath = %q", cfg.AutoUpdate.ServicePath)
 	}
+	if !cfg.LookingGlass.Enabled || !cfg.LookingGlass.TracerouteEnabled {
+		t.Errorf("LookingGlass enable flags = %+v", cfg.LookingGlass)
+	}
+	if len(cfg.LookingGlass.AllowedCIDRs) != 2 || cfg.LookingGlass.AllowedCIDRs[0] != "public" {
+		t.Errorf("LookingGlass.AllowedCIDRs = %v", cfg.LookingGlass.AllowedCIDRs)
+	}
+	if len(cfg.LookingGlass.DisallowedCIDRs) != 1 || cfg.LookingGlass.DisallowedCIDRs[0] != "192.0.2.1" {
+		t.Errorf("LookingGlass.DisallowedCIDRs = %v", cfg.LookingGlass.DisallowedCIDRs)
+	}
+	if cfg.LookingGlass.BirdMaxConcurrent != 32 || cfg.LookingGlass.TracerouteMaxConcurrent != 8 {
+		t.Errorf("LookingGlass concurrency limits = %+v", cfg.LookingGlass)
+	}
+	if cfg.LookingGlass.RequestTimeout != 20*time.Second || cfg.LookingGlass.MaxQueryLength != 2048 || cfg.LookingGlass.MaxOutputBytes != 32768 {
+		t.Errorf("LookingGlass request limits = %+v", cfg.LookingGlass)
+	}
 }
 
 func TestLoadDefaultValues(t *testing.T) {
@@ -240,6 +269,77 @@ vnstat_auto_add: false
 	}
 	if cfg.AutoUpdate.ServicePath != "/etc/systemd/system/dn42-agent.service" {
 		t.Errorf("AutoUpdate.ServicePath = %q, want /etc/systemd/system/dn42-agent.service", cfg.AutoUpdate.ServicePath)
+	}
+	if cfg.LookingGlass.Enabled || !cfg.LookingGlass.TracerouteEnabled {
+		t.Errorf("LookingGlass enable flags = %+v, want LG disabled and traceroute default true", cfg.LookingGlass)
+	}
+	if len(cfg.LookingGlass.AllowedCIDRs) != 0 || len(cfg.LookingGlass.DisallowedCIDRs) != 0 {
+		t.Errorf("LookingGlass source policy = %+v, want empty", cfg.LookingGlass)
+	}
+	if cfg.LookingGlass.BirdMaxConcurrent != 16 || cfg.LookingGlass.TracerouteMaxConcurrent != 10 {
+		t.Errorf("LookingGlass concurrency defaults = %+v", cfg.LookingGlass)
+	}
+	if cfg.LookingGlass.RequestTimeout != 15*time.Second || cfg.LookingGlass.MaxQueryLength != 4096 || cfg.LookingGlass.MaxOutputBytes != 64*1024 {
+		t.Errorf("LookingGlass request defaults = %+v", cfg.LookingGlass)
+	}
+}
+
+func TestLoadLookingGlassTracerouteExplicitlyDisabled(t *testing.T) {
+	t.Parallel()
+	path := writeTempConfig(t, `
+secret: "s"
+my_dn42_link_local_address: "fe80::1"
+my_dn42_ula_address: "fd00::1"
+my_dn42_ipv4_address: "172.20.0.1"
+bird_table_4: "master4"
+bird_table_6: "master6"
+looking_glass:
+  enabled: true
+  allowed_cidrs: [dn42]
+  traceroute_enabled: false
+`)
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.LookingGlass.Enabled || cfg.LookingGlass.TracerouteEnabled {
+		t.Fatalf("LookingGlass = %+v", cfg.LookingGlass)
+	}
+}
+
+func TestLoadRejectsInvalidLookingGlassConfig(t *testing.T) {
+	t.Parallel()
+	base := `
+secret: "s"
+my_dn42_link_local_address: "fe80::1"
+my_dn42_ula_address: "fd00::1"
+my_dn42_ipv4_address: "172.20.0.1"
+bird_table_4: "master4"
+bird_table_6: "master6"
+looking_glass:
+%s
+`
+	tests := []struct {
+		name  string
+		block string
+	}{
+		{name: "invalid allowed selector", block: "  allowed_cidrs: [not-a-selector]"},
+		{name: "invalid disallowed selector", block: "  disallowed_cidrs: [bad-prefix]"},
+		{name: "zero bird concurrency", block: "  bird_max_concurrent: 0"},
+		{name: "excessive traceroute concurrency", block: "  traceroute_max_concurrent: 65"},
+		{name: "invalid timeout", block: "  request_timeout: forever"},
+		{name: "excessive timeout", block: "  request_timeout: 3m"},
+		{name: "excessive query", block: "  max_query_length: 4097"},
+		{name: "excessive output", block: "  max_output_bytes: 65537"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeTempConfig(t, fmt.Sprintf(base, test.block))
+			if _, err := Load(path); err == nil {
+				t.Fatal("Load() succeeded, want looking glass validation error")
+			}
+		})
 	}
 }
 
