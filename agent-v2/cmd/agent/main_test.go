@@ -167,11 +167,11 @@ func TestRegisterLookingGlassRoutesAllowedEmptyDeniesAll(t *testing.T) {
 func TestNewHTTPServerTimeouts(t *testing.T) {
 	t.Parallel()
 	srv := newHTTPServer("127.0.0.1:0", http.NotFoundHandler())
-	if srv.ReadHeaderTimeout != 5*time.Second || srv.ReadTimeout != 15*time.Second || srv.WriteTimeout != 150*time.Second || srv.IdleTimeout != 60*time.Second {
+	if srv.ReadHeaderTimeout != 5*time.Second || srv.ReadTimeout != 15*time.Second || srv.WriteTimeout != 310*time.Second || srv.IdleTimeout != 60*time.Second {
 		t.Fatalf("unexpected HTTP timeouts: %+v", srv)
 	}
-	if srv.WriteTimeout <= 2*time.Minute {
-		t.Fatalf("WriteTimeout = %v, must exceed maximum looking glass request timeout", srv.WriteTimeout)
+	if srv.WriteTimeout <= 5*time.Minute {
+		t.Fatalf("WriteTimeout = %v, must exceed the remote update request timeout", srv.WriteTimeout)
 	}
 	if srv.MaxHeaderBytes != 64*1024 {
 		t.Fatalf("MaxHeaderBytes = %d", srv.MaxHeaderBytes)

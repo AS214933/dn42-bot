@@ -8,6 +8,8 @@ from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 
 CHANNELS = ("candidate", "stable")
+CHECK_TIMEOUT_SECONDS = 15
+APPLY_TIMEOUT_SECONDS = 300
 
 
 def _get_agent_host(server_key):
@@ -60,15 +62,19 @@ def _format_bool(value):
     return "yes" if value else "no"
 
 
+def _format_update_error(result):
+    if "status" in result:
+        detail = result.get("text") or result.get("json") or ""
+        suffix = f": {detail}" if detail else ""
+        return f"HTTP {result['status']}{suffix}"
+    return f"ERROR: {result.get('error', 'unknown error')}"
+
+
 def _format_update_result(server_key, result):
     title = base.servers.get(server_key, server_key)
     lines = [f"{title}:"]
     if not result.get("ok"):
-        if "status" in result:
-            detail = result.get("text") or result.get("json") or ""
-            lines.append(f"  HTTP {result['status']}: {detail}")
-        else:
-            lines.append(f"  ERROR: {result.get('error', 'unknown error')}")
+        lines.append(f"  {_format_update_error(result)}")
         return "\n".join(lines)
 
     status = result.get("json")
@@ -93,6 +99,50 @@ def _format_update_result(server_key, result):
     return "\n".join(lines)
 
 
+def _apply_outcome(result, force=False):
+    status = result.get("json")
+    if not result.get("ok") or not isinstance(status, dict):
+        return "failure"
+    if (
+        result.get("status") == 202
+        and status.get("installed") is True
+        and status.get("restart_required") is True
+    ):
+        return "success"
+    if (
+        not force
+        and result.get("status") == 200
+        and status.get("installed") is False
+        and status.get("update_available") is False
+    ):
+        return "current"
+    return "failure"
+
+
+def _format_apply_result(server_key, result, force=False):
+    title = base.servers.get(server_key, server_key)
+    lines = [f"{title}:"]
+    outcome = _apply_outcome(result, force)
+    status = result.get("json")
+
+    if outcome == "success":
+        lines.extend(["  Update succeeded.", "  更新成功。"])
+        if status.get("latest_version"):
+            lines.append(f"  version: {status['latest_version']}")
+        lines.extend(["  Agent restart scheduled.", "  Agent 重启已安排。"])
+        return "\n".join(lines)
+
+    if outcome == "current":
+        lines.extend(["  Already up to date.", "  已是最新版本。"])
+        version = status.get("current_version") or status.get("latest_version")
+        if version:
+            lines.append(f"  version: {version}")
+        return "\n".join(lines)
+
+    lines.extend(["  Update failed.", "  更新失败。", f"  {_format_update_error(result)}"])
+    return "\n".join(lines)
+
+
 def _run_update(target, action, channel, force=False):
     if channel not in CHANNELS:
         return f"Invalid update channel: {channel}"
@@ -105,8 +155,7 @@ def _run_update(target, action, channel, force=False):
     payload = {"channel": channel}
     if action == "apply":
         payload["force"] = force
-    timeout = 15 if action == "check" else 60
-
+    timeout = CHECK_TIMEOUT_SECONDS if action == "check" else APPLY_TIMEOUT_SECONDS
     header = f"Agent update {action}"
     if force:
         header += " (force)"
@@ -114,7 +163,10 @@ def _run_update(target, action, channel, force=False):
     lines = [header, ""]
     for server_key in servers:
         result = _post_agent_update(server_key, endpoint, payload, timeout)
-        lines.append(_format_update_result(server_key, result))
+        if action == "check":
+            lines.append(_format_update_result(server_key, result))
+        else:
+            lines.append(_format_apply_result(server_key, result, force))
         lines.append("")
     return "\n".join(lines).rstrip()
 
@@ -248,7 +300,7 @@ def handle_update_callback(call):
             text,
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            reply_markup=_action_keyboard(target),
+            reply_markup=_action_keyboard(target) if action == "check" else None,
         )
         return
 
