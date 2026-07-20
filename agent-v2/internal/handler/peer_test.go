@@ -17,6 +17,7 @@ import (
 
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/model"
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/service"
 )
 
 func peerTestConfig() *config.Config {
@@ -603,6 +604,52 @@ func TestPeerHandler_RequestLinkLocalOverride(t *testing.T) {
 	wg := string(wgContent)
 	if !strings.Contains(wg, "fe80::abcd/64") {
 		t.Error("expected overridden link-local address")
+	}
+}
+
+func TestPeerHandler_RequestLinkLocalSentinelFallsBack(t *testing.T) {
+	t.Parallel()
+	cfg := peerTestConfig()
+	wgDir, birdDir := setupDirs(t)
+	cmd := newCmdRecord()
+	handler := newPeerHandler(cfg, wgDir, birdDir, cmd.Run)
+
+	peerJSON := `{
+		"Region": "nld",
+		"ASN": 4242422895,
+		"Contact": "@drool_on_shusky",
+		"Port": 22895,
+		"IPv4": "172.23.232.64",
+		"IPv6": "fda2:e173:6ea4::",
+		"PublicKey": "Qsu/ZtSEtsL5EoFQtLe0uCu4a+x90u8nbLPiDhJ4MRA=",
+		"PresharedKey": null,
+		"Clearnet": "41.223.30.42:23374",
+		"Channel": "IPv6 & IPv4",
+		"MP-BGP": "IPv4",
+		"MTU": 1420,
+		"Request-LinkLocal": "Not required due to not use LLA as IPv6"
+	}`
+
+	rec := doRequest(handler, http.MethodPost, "/peer", peerJSON, map[string]string{
+		"Content-Type": "application/json",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	wgContent, err := os.ReadFile(filepath.Join(wgDir, "dn42-4242422895.conf"))
+	if err != nil {
+		t.Fatalf("WG config not written: %v", err)
+	}
+	wg := string(wgContent)
+	if strings.Contains(wg, "Not required due to not use LLA as IPv6") {
+		t.Fatalf("generated config contains Request-LinkLocal sentinel:\n%s", wg)
+	}
+	if !strings.Contains(wg, "PostUp = ip addr add fe80::1/64 dev %i") {
+		t.Fatalf("expected configured link-local fallback, got:\n%s", wg)
+	}
+	if _, err := service.ParseConfig(4242422895, wg); err != nil {
+		t.Fatalf("generated config should remain parseable: %v\n%s", err, wg)
 	}
 }
 

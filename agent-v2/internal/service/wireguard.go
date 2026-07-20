@@ -31,8 +31,8 @@ func GenerateConfig(peer model.PeerInfo, cfg *config.Config) string {
 	ula, ll, ipv4 := classifyPeerAddresses(peer.IPv6, peer.IPv4)
 
 	myLLA := cfg.MyDN42LinkLocalAddress.String()
-	if peer.RequestLinkLocal != "" {
-		myLLA = peer.RequestLinkLocal
+	if requestedLLA := normalizeLinkLocalAddress(peer.RequestLinkLocal); requestedLLA != "" {
+		myLLA = requestedLLA
 	}
 
 	var sb strings.Builder
@@ -72,6 +72,19 @@ func GenerateConfig(peer model.PeerInfo, cfg *config.Config) string {
 	sb.WriteString("AllowedIPs = 172.20.0.0/14, 10.0.0.0/8, 172.31.0.0/16, fd00::/8, fe80::/64\n")
 
 	return sb.String()
+}
+
+func normalizeLinkLocalAddress(value string) string {
+	ip := net.ParseIP(strings.TrimSpace(value))
+	if ip == nil || ip.To4() != nil {
+		return ""
+	}
+
+	_, linkLocalNet, _ := net.ParseCIDR("fe80::/64")
+	if !linkLocalNet.Contains(ip) {
+		return ""
+	}
+	return ip.String()
 }
 
 func classifyPeerAddresses(ipv6, ipv4 string) (ula, ll, ipv4Addr string) {

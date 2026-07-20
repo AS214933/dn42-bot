@@ -142,7 +142,7 @@ func TestGenerateConfigNoPeerAddresses(t *testing.T) {
 func TestGenerateConfigRequestLinkLocalOverride(t *testing.T) {
 	t.Parallel()
 	peer := defaultTestPeer()
-	peer.RequestLinkLocal = "fe80::abcd"
+	peer.RequestLinkLocal = "  FE80::ABCD  "
 	cfg := defaultTestConfig()
 
 	result := GenerateConfig(peer, cfg)
@@ -153,6 +153,32 @@ func TestGenerateConfigRequestLinkLocalOverride(t *testing.T) {
 	if strings.Contains(result, "fe80::1/64") {
 		t.Error("expected original fe80::1 to be overridden")
 	}
+}
+
+func TestGenerateConfigRequestLinkLocalSentinelFallsBack(t *testing.T) {
+	t.Parallel()
+	peer := defaultTestPeer()
+	peer.IPv6 = "fda2:e173:6ea4::"
+	peer.IPv4 = "172.23.232.64"
+	peer.RequestLinkLocal = "Not required due to not use LLA as IPv6"
+	cfg := defaultTestConfig()
+
+	result := GenerateConfig(peer, cfg)
+
+	if strings.Contains(result, peer.RequestLinkLocal) {
+		t.Fatalf("generated config contains Request-LinkLocal sentinel:\n%s", result)
+	}
+	if !strings.Contains(result, "PostUp = ip addr add fe80::1/64 dev %i") {
+		t.Fatalf("expected configured link-local fallback, got:\n%s", result)
+	}
+
+	parsed, err := ParseConfig(peer.ASN, result)
+	if err != nil {
+		t.Fatalf("generated config should remain parseable: %v\n%s", err, result)
+	}
+	assertField(t, "MyLLA", parsed.MyLLA, "fe80::1")
+	assertField(t, "PeerULA", parsed.PeerULA, "fda2:e173:6ea4::")
+	assertField(t, "PeerIPv4", parsed.PeerIPv4, "172.23.232.64")
 }
 
 func TestGenerateConfigULAPeerAddress(t *testing.T) {
