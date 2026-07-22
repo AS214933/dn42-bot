@@ -16,6 +16,7 @@ func TestRemoveHandler_Forbidden(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{Secret: "correct-secret"}
 	h := NewRemoveHandler(cfg, noopRun, noopRemove)
+	h.birdQuery = func(_ context.Context, command string) (string, error) { return "", nil }
 
 	req := httptest.NewRequest(http.MethodPost, "/remove", strings.NewReader("4242421234"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "wrong-secret")
@@ -32,6 +33,7 @@ func TestRemoveHandler_MissingAuth(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{Secret: "correct-secret"}
 	h := NewRemoveHandler(cfg, noopRun, noopRemove)
+	h.birdQuery = func(_ context.Context, command string) (string, error) { return "", nil }
 
 	req := httptest.NewRequest(http.MethodPost, "/remove", strings.NewReader("4242421234"))
 	rec := httptest.NewRecorder()
@@ -47,6 +49,7 @@ func TestRemoveHandler_EmptyBody(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{Secret: "s"}
 	h := NewRemoveHandler(cfg, noopRun, noopRemove)
+	h.birdQuery = func(_ context.Context, command string) (string, error) { return "", nil }
 
 	req := httptest.NewRequest(http.MethodPost, "/remove", strings.NewReader(""))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
@@ -63,6 +66,7 @@ func TestRemoveHandler_InvalidASN(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{Secret: "s"}
 	h := NewRemoveHandler(cfg, noopRun, noopRemove)
+	h.birdQuery = func(_ context.Context, command string) (string, error) { return "", nil }
 
 	req := httptest.NewRequest(http.MethodPost, "/remove", strings.NewReader("not-a-number"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
@@ -95,6 +99,11 @@ func TestRemoveHandler_Success(t *testing.T) {
 	}
 
 	h := NewRemoveHandler(cfg, mockRun, mockRemove)
+	var birdCmd string
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		birdCmd = command
+		return "", nil
+	}
 	req := httptest.NewRequest(http.MethodPost, "/remove", strings.NewReader("4242421234"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
 	rec := httptest.NewRecorder()
@@ -106,7 +115,9 @@ func TestRemoveHandler_Success(t *testing.T) {
 	}
 
 	assertContains(t, cmds, "wg-quick down dn42-4242421234")
-	assertContains(t, cmds, "birdc -s /run/bird.ctl c")
+	if birdCmd != "configure" {
+		t.Errorf("expected bird configure, got %q", birdCmd)
+	}
 	assertContains(t, removed, "/etc/wireguard/dn42-4242421234.conf")
 	assertContains(t, removed, "/etc/bird/dn42_peers/4242421234.conf")
 
@@ -131,6 +142,7 @@ func TestRemoveHandler_BodyReadEOFWithData(t *testing.T) {
 	}
 
 	h := NewRemoveHandler(cfg, mockRun, noopRemove)
+	h.birdQuery = func(_ context.Context, command string) (string, error) { return "", nil }
 	req := httptest.NewRequest(http.MethodPost, "/remove", nil)
 	req.Body = &eofAfterReadCloser{data: []byte("4242421234")}
 	req.ContentLength = int64(len("4242421234"))
@@ -160,6 +172,7 @@ func TestRemoveHandler_VnstatAutoRemove(t *testing.T) {
 	}
 
 	h := NewRemoveHandler(cfg, mockRun, noopRemove)
+	h.birdQuery = func(_ context.Context, command string) (string, error) { return "", nil }
 	req := httptest.NewRequest(http.MethodPost, "/remove", strings.NewReader("4242421234"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
 	rec := httptest.NewRecorder()
@@ -183,6 +196,7 @@ func TestRemoveHandler_WhitespaceASN(t *testing.T) {
 	}
 
 	h := NewRemoveHandler(cfg, mockRun, noopRemove)
+	h.birdQuery = func(_ context.Context, command string) (string, error) { return "", nil }
 	req := httptest.NewRequest(http.MethodPost, "/remove", strings.NewReader("  4242421234  \n"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
 	rec := httptest.NewRecorder()

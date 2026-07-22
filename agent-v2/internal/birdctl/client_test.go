@@ -1,4 +1,4 @@
-package lookingglass
+package birdctl
 
 import (
 	"bufio"
@@ -80,7 +80,7 @@ func TestBirdClientRestrictsBeforeQuery(t *testing.T) {
 		"0016 Access restricted\n",
 		"2002-Name       Proto      Table      State  Since         Info\n Name continuation\n0000 \n",
 	)
-	client := birdClient{socketPath: server.socket, maxOutputBytes: 64 * 1024}
+	client := Client{SocketPath: server.socket, MaxOutputBytes: 64 * 1024, Restrict: true}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -102,7 +102,7 @@ func TestBirdClientRestrictsBeforeQuery(t *testing.T) {
 func TestBirdClientRefusesUnconfirmedRestriction(t *testing.T) {
 	t.Parallel()
 	server := startMockBirdServer(t, "0017 Restriction unavailable\n", "0000 should not be sent\n")
-	client := birdClient{socketPath: server.socket, maxOutputBytes: 1024}
+	client := Client{SocketPath: server.socket, MaxOutputBytes: 1024, Restrict: true}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -120,7 +120,7 @@ func TestBirdClientRefusesUnconfirmedRestriction(t *testing.T) {
 func TestBirdClientLimitsOutput(t *testing.T) {
 	t.Parallel()
 	server := startMockBirdServer(t, "0016 Access restricted\n", "1000-"+strings.Repeat("x", 100)+"\n0000 \n")
-	client := birdClient{socketPath: server.socket, maxOutputBytes: 16}
+	client := Client{SocketPath: server.socket, MaxOutputBytes: 16, Restrict: true}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -137,7 +137,7 @@ func TestBirdClientDefaultSizeOutputLimit(t *testing.T) {
 	t.Parallel()
 	const limit = 64 * 1024
 	server := startMockBirdServer(t, "0016 Access restricted\n", "1000-"+strings.Repeat("x", limit+100)+"\n0000 \n")
-	client := birdClient{socketPath: server.socket, maxOutputBytes: limit}
+	client := Client{SocketPath: server.socket, MaxOutputBytes: limit, Restrict: true}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -153,7 +153,7 @@ func TestBirdClientDefaultSizeOutputLimit(t *testing.T) {
 func TestBirdClientHonorsDeadline(t *testing.T) {
 	t.Parallel()
 	server := startMockBirdServer(t, "", "")
-	client := birdClient{socketPath: server.socket, maxOutputBytes: 1024}
+	client := Client{SocketPath: server.socket, MaxOutputBytes: 1024, Restrict: true}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
@@ -165,7 +165,7 @@ func TestBirdClientHonorsDeadline(t *testing.T) {
 func TestBirdClientReturnsBirdErrorText(t *testing.T) {
 	t.Parallel()
 	server := startMockBirdServer(t, "0016 Access restricted\n", "9001 syntax error\n")
-	client := birdClient{socketPath: server.socket, maxOutputBytes: 1024}
+	client := Client{SocketPath: server.socket, MaxOutputBytes: 1024, Restrict: true}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
@@ -181,7 +181,7 @@ func TestBirdClientReturnsBirdErrorText(t *testing.T) {
 func TestBirdResponsePreservesBlankContinuation(t *testing.T) {
 	t.Parallel()
 	reader := bufio.NewReader(strings.NewReader("1000-first\n \n0000 \n"))
-	response, err := readBirdResponse(reader, 1024)
+	response, err := readResponse(reader, 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,8 +193,8 @@ func TestBirdResponsePreservesBlankContinuation(t *testing.T) {
 func TestBirdResponseRejectsMalformedLine(t *testing.T) {
 	t.Parallel()
 	reader := bufio.NewReader(strings.NewReader("malformed\n"))
-	if _, err := readBirdResponse(reader, 1024); !errors.Is(err, errBirdProtocol) {
-		t.Fatalf("error = %v, want errBirdProtocol", err)
+	if _, err := readResponse(reader, 1024); !errors.Is(err, ErrProtocol) {
+		t.Fatalf("error = %v, want ErrProtocol", err)
 	}
 }
 
@@ -212,7 +212,7 @@ func (r byteAtATimeReader) Read(value []byte) (int, error) {
 func TestBirdResponseHandlesFragmentedReads(t *testing.T) {
 	t.Parallel()
 	fragmented := byteAtATimeReader{reader: strings.NewReader("1000-first\n second\n0000 \n")}
-	response, err := readBirdResponse(bufio.NewReader(fragmented), 1024)
+	response, err := readResponse(bufio.NewReader(fragmented), 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +231,7 @@ func (shortWriteConn) Write(value []byte) (int, error) {
 
 func TestWriteBirdCommandDetectsShortWrite(t *testing.T) {
 	t.Parallel()
-	if err := writeBirdCommand(shortWriteConn{}, "show protocols"); !errors.Is(err, io.ErrShortWrite) {
+	if err := writeCommand(shortWriteConn{}, "show protocols"); !errors.Is(err, io.ErrShortWrite) {
 		t.Fatalf("error = %v, want io.ErrShortWrite", err)
 	}
 }
@@ -250,9 +250,9 @@ func TestParseBirdLine(t *testing.T) {
 		{line: "123x invalid", text: "123x invalid"},
 	}
 	for _, test := range tests {
-		code, text, delimiter, prefixed := parseBirdLine(test.line)
+		code, text, delimiter, prefixed := parseLine(test.line)
 		if code != test.code || text != test.text || delimiter != test.delimiter || prefixed != test.prefixed {
-			t.Errorf("parseBirdLine(%q) = (%q, %q, %q, %v)", test.line, code, text, delimiter, prefixed)
+			t.Errorf("parseLine(%q) = (%q, %q, %q, %v)", test.line, code, text, delimiter, prefixed)
 		}
 	}
 }

@@ -16,6 +16,9 @@ func TestRestartHandler_Forbidden(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{Secret: "correct-secret"}
 	h := NewRestartHandler(cfg, noopRun)
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		return "", nil
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/restart", strings.NewReader("4242421234"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "wrong-secret")
@@ -32,6 +35,9 @@ func TestRestartHandler_MissingAuth(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{Secret: "correct-secret"}
 	h := NewRestartHandler(cfg, noopRun)
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		return "", nil
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/restart", strings.NewReader("4242421234"))
 	rec := httptest.NewRecorder()
@@ -47,6 +53,9 @@ func TestRestartHandler_EmptyBody(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{Secret: "s"}
 	h := NewRestartHandler(cfg, noopRun)
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		return "", nil
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/restart", strings.NewReader(""))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
@@ -63,6 +72,9 @@ func TestRestartHandler_InvalidASN(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{Secret: "s"}
 	h := NewRestartHandler(cfg, noopRun)
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		return "", nil
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/restart", strings.NewReader("abc"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
@@ -86,6 +98,11 @@ func TestRestartHandler_Success(t *testing.T) {
 	}
 
 	h := NewRestartHandler(cfg, mockRun)
+	var birdCmds []string
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		birdCmds = append(birdCmds, command)
+		return "", nil
+	}
 	req := httptest.NewRequest(http.MethodPost, "/restart", strings.NewReader("4242421234"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
 	rec := httptest.NewRecorder()
@@ -98,8 +115,8 @@ func TestRestartHandler_Success(t *testing.T) {
 
 	assertContains(t, cmds, "wg-quick down dn42-4242421234")
 	assertContains(t, cmds, "wg-quick up dn42-4242421234")
-	assertContains(t, cmds, "birdc -s /run/bird.ctl restart DN42_4242421234_v4")
-	assertContains(t, cmds, "birdc -s /run/bird.ctl restart DN42_4242421234_v6")
+	assertContains(t, birdCmds, "restart DN42_4242421234_v4")
+	assertContains(t, birdCmds, "restart DN42_4242421234_v6")
 }
 
 func TestRestartHandler_NotFound_BirdSyntaxAndWGError(t *testing.T) {
@@ -110,13 +127,13 @@ func TestRestartHandler_NotFound_BirdSyntaxAndWGError(t *testing.T) {
 		if name == "wg-quick" && len(args) > 0 && args[0] == "up" {
 			return "RTNETLINK answers: No such device\nip link delete dev dn42-4242421234\n", nil
 		}
-		if name == "birdc" {
-			return "syntax error", nil
-		}
 		return "", nil
 	}
 
 	h := NewRestartHandler(cfg, mockRun)
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		return "syntax error", nil
+	}
 	req := httptest.NewRequest(http.MethodPost, "/restart", strings.NewReader("4242421234"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
 	rec := httptest.NewRecorder()
@@ -133,13 +150,13 @@ func TestRestartHandler_BirdError(t *testing.T) {
 	cfg := &config.Config{Secret: "s", BirdCtlPath: "/run/bird.ctl"}
 
 	mockRun := func(_ context.Context, name string, args []string, _ time.Duration) (string, error) {
-		if name == "birdc" {
-			return "syntax error", nil
-		}
 		return "", nil
 	}
 
 	h := NewRestartHandler(cfg, mockRun)
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		return "syntax error", nil
+	}
 	req := httptest.NewRequest(http.MethodPost, "/restart", strings.NewReader("4242421234"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
 	rec := httptest.NewRecorder()
@@ -162,13 +179,13 @@ func TestRestartHandler_WGError(t *testing.T) {
 		if name == "wg-quick" && len(args) > 0 && args[0] == "up" {
 			return "ip link delete dev dn42-4242421234\n", nil
 		}
-		if name == "birdc" {
-			return "ok", nil
-		}
 		return "", nil
 	}
 
 	h := NewRestartHandler(cfg, mockRun)
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		return "ok", nil
+	}
 	req := httptest.NewRequest(http.MethodPost, "/restart", strings.NewReader("4242421234"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
 	rec := httptest.NewRecorder()
@@ -197,6 +214,11 @@ func TestRestartHandler_WGDownErrorIgnored(t *testing.T) {
 	}
 
 	h := NewRestartHandler(cfg, mockRun)
+	var birdCmds []string
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		birdCmds = append(birdCmds, command)
+		return "", nil
+	}
 	req := httptest.NewRequest(http.MethodPost, "/restart", strings.NewReader("4242421234"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
 	rec := httptest.NewRecorder()
@@ -221,6 +243,9 @@ func TestRestartHandler_WhitespaceASN(t *testing.T) {
 	}
 
 	h := NewRestartHandler(cfg, mockRun)
+	h.birdQuery = func(_ context.Context, command string) (string, error) {
+		return "", nil
+	}
 	req := httptest.NewRequest(http.MethodPost, "/restart", strings.NewReader("  4242421234\n"))
 	req.Header.Set("X-DN42-Bot-Api-Secret-Token", "s")
 	rec := httptest.NewRecorder()

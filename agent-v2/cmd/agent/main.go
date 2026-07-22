@@ -129,7 +129,7 @@ func main() {
 		r.Handle("/route", handler.RouteHandler(cfg, handler.NewBirdcRunner()))
 		r.Handle("/path", handler.PathHandler(cfg, handler.NewBirdcRunner()))
 
-		r.Handle("/igp_topology", handler.TopologyHandler(cfg, handler.DefaultBirdCommand()))
+		r.Handle("/igp_topology", handler.TopologyHandler(cfg, handler.DefaultBirdCommand(cfg.BirdCtlPath)))
 	})
 
 	service.EnsureWGInterfacesUp(ctx, cfg, service.DefaultRecoveryDeps())

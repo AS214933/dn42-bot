@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/birdctl"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
-	"github.com/bingxin666/dn42-bot/agent-v2/internal/service"
 )
 
 type BirdcRunner func(ctx context.Context, ctlPath, table, target string) (string, error)
 
 func NewBirdcRunner() BirdcRunner {
 	return func(ctx context.Context, ctlPath, table, target string) (string, error) {
-		return service.RunCommand(ctx, "birdc", []string{"-s", ctlPath, "show", "route", "table", table, "for", target, "all", "primary"}, 30*time.Second)
+		return birdctl.Query(ctx, ctlPath, "show route table "+table+" for "+target+" all primary")
 	}
 }
 

@@ -1,18 +1,21 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/birdctl"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
 )
 
 type RestartHandler struct {
-	cfg    *config.Config
-	runCmd RunFunc
+	cfg       *config.Config
+	runCmd    RunFunc
+	birdQuery func(ctx context.Context, command string) (string, error)
 }
 
 func NewRestartHandler(cfg *config.Config, runCmd RunFunc) *RestartHandler {
@@ -45,8 +48,16 @@ func (h *RestartHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	outWG, _ := h.runCmd(ctx, "wg-quick", []string{"up", iface}, 10*time.Second)
 
 	session := fmt.Sprintf("DN42_%d", asn)
-	outV4, _ := h.runCmd(ctx, "birdc", []string{"-s", h.cfg.BirdCtlPath, "restart", session + "_v4"}, 10*time.Second)
-	outV6, _ := h.runCmd(ctx, "birdc", []string{"-s", h.cfg.BirdCtlPath, "restart", session + "_v6"}, 10*time.Second)
+	birdQuery := h.birdQuery
+	if birdQuery == nil {
+		birdQuery = func(ctx context.Context, command string) (string, error) {
+			qctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			return birdctl.Query(qctx, h.cfg.BirdCtlPath, command)
+		}
+	}
+	outV4, _ := birdQuery(ctx, "restart "+session+"_v4")
+	outV6, _ := birdQuery(ctx, "restart "+session+"_v6")
 
 	wgError := strings.Contains(strings.ToLower(outWG), "ip link delete dev")
 	v4SyntaxErr := strings.Contains(outV4, "syntax error")

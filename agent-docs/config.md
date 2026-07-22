@@ -69,7 +69,7 @@ auto_update:
 | `my_dn42_ipv4_address` | string | `""` | Yes | The DN42 IPv4 address of this agent (e.g., `172.23.246.1`). Must be a valid IPv4 address. |
 | `my_wg_public_key` | string | `""` | Yes | The WireGuard public key for this agent. Peers use this to establish tunnels. |
 | `sentry_dsn` | string | `""` | No | Sentry DSN for error tracking. Leave empty to disable. |
-| `bird_ctl_path` | string | `"/var/run/bird/bird.ctl"` | No | Path to the BIRD control socket. Used for route and path queries. |
+| `bird_ctl_path` | string | `"/var/run/bird/bird.ctl"` | No | Path to the BIRD UNIX control socket. Used for all BIRD queries (route/path/info/topology/looking glass) and configure/restart. |
 | `bird_table_4` | string | `""` | Yes | Name of the BIRD routing table for IPv4 routes. |
 | `bird_table_6` | string | `""` | Yes | Name of the BIRD routing table for IPv6 routes. |
 | `vnstat_auto_add` | bool | `true` | No | Whether to automatically add tunnel interfaces to vnstat for traffic monitoring. |

@@ -148,7 +148,17 @@ func newPeerHandler(cfg *config.Config, wgDir, birdDir string, runner CmdRunner)
 		WGConfDir:   wgDir,
 		BirdConfDir: birdDir,
 		RunCmd:      runner,
+		BirdQuery:   func(_ context.Context, _ string) (string, error) { return "", nil },
 	}
+}
+
+func attachBirdQueryRecorder(h *PeerHandler) *[]string {
+	var calls []string
+	h.BirdQuery = func(_ context.Context, command string) (string, error) {
+		calls = append(calls, command)
+		return "", nil
+	}
+	return &calls
 }
 
 func doRequest(handler http.Handler, method, path, body string, headers map[string]string) *httptest.ResponseRecorder {
@@ -272,6 +282,7 @@ func TestPeerHandler_SuccessNewPeer(t *testing.T) {
 	wgDir, birdDir := setupDirs(t)
 	cmd := newCmdRecord()
 	handler := newPeerHandler(cfg, wgDir, birdDir, cmd.Run)
+	birdCalls := attachBirdQueryRecorder(handler)
 
 	rec := doRequest(handler, http.MethodPost, "/peer", defaultPeerJSON(), map[string]string{
 		"Content-Type": "application/json",
@@ -320,8 +331,8 @@ func TestPeerHandler_SuccessNewPeer(t *testing.T) {
 	if cmd.callsMatching("wg-quick", "up", "dn42-4242421234") != 1 {
 		t.Error("expected wg-quick up to be called once")
 	}
-	if cmd.callsMatching("birdc", "-s", cfg.BirdCtlPath, "configure") != 1 {
-		t.Error("expected birdc configure to be called once")
+	if birdCalls == nil || len(*birdCalls) != 1 || (*birdCalls)[0] != "configure" {
+		t.Errorf("expected bird configure once, got %v", birdCalls)
 	}
 }
 

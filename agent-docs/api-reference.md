@@ -614,12 +614,12 @@ Queries BIRD for the routing table entry for a target address.
 fd42:xxxx::2
 ```
 
-The agent selects the IPv4 or IPv6 BIRD table based on whether the target contains `:`.
+The agent selects the IPv4 or IPv6 BIRD table based on whether the target contains `:`. Queries are sent over the BIRD UNIX control socket (`bird_ctl_path`, default `/var/run/bird/bird.ctl`).
 
 **Response (plain text):** Raw BIRD `show route` output.
 
 **Status Codes:**
-- `200 OK` — Route lookup result, including BIRD messages such as `Network not in table` when birdc exits non-zero but still produced output
+- `200 OK` — Route lookup result, including BIRD messages such as `Network not in table` when the control socket returns an error body
 - `403 Forbidden` — Invalid or missing token
 - `400 Bad Request` — Empty body
 - `408 Request Timeout` — BIRD query did not complete within 30 seconds
@@ -649,7 +649,7 @@ fd42:xxxx::2
 - `200 OK` — AS path found
 - `403 Forbidden` — Invalid or missing token
 - `400 Bad Request` — Empty body
-- `404 Not Found` — No route found or AS path not present in route attributes (including birdc non-zero responses without `BGP.as_path`)
+- `404 Not Found` — No route found or AS path not present in route attributes (including control-socket error replies without `BGP.as_path`)
 - `408 Request Timeout` — BIRD query did not complete within 30 seconds
 - `500 Internal Server Error` — BIRD command failed with no output
 

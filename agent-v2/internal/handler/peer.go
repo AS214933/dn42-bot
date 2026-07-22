@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/birdctl"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/model"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/service"
@@ -23,6 +24,8 @@ type PeerHandler struct {
 	WGConfDir   string
 	BirdConfDir string
 	RunCmd      CmdRunner
+	// BirdQuery runs one BIRD control command. Defaults to birdctl.Query.
+	BirdQuery   func(ctx context.Context, command string) (string, error)
 }
 
 func (h *PeerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +84,15 @@ func (h *PeerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	output, _ := h.RunCmd(ctx, "wg-quick", []string{"up", iface}, 10*time.Second)
 	_ = output
 
-	h.RunCmd(ctx, "birdc", []string{"-s", h.Cfg.BirdCtlPath, "configure"}, 10*time.Second)
+	birdQuery := h.BirdQuery
+	if birdQuery == nil {
+		birdQuery = func(ctx context.Context, command string) (string, error) {
+			qctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			return birdctl.Query(qctx, h.Cfg.BirdCtlPath, command)
+		}
+	}
+	birdQuery(ctx, "configure")
 
 	if h.Cfg.VnstatAutoAdd {
 		h.RunCmd(ctx, "vnstat", []string{"--add", "-i", iface}, 10*time.Second)

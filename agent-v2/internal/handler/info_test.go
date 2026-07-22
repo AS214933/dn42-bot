@@ -40,8 +40,28 @@ func newInfoHandler(cfg *config.Config, wgDir, birdDir string, runner CmdRunner)
 		WGConfDir:   wgDir,
 		BirdConfDir: birdDir,
 		RunCmd:      runner,
+		BirdQuery:   func(_ context.Context, _ string) (string, error) { return "", fmt.Errorf("bird query not stubbed") },
 	}
 }
+
+func attachBirdOutputs(h *InfoHandler, outputs map[string]string) {
+	prev := h.BirdQuery
+	// Copy so later mutations to the caller's map don't affect earlier attaches.
+	cloned := make(map[string]string, len(outputs))
+	for k, v := range outputs {
+		cloned[k] = v
+	}
+	h.BirdQuery = func(ctx context.Context, command string) (string, error) {
+		if out, ok := cloned[command]; ok {
+			return out, nil
+		}
+		if prev != nil {
+			return prev(ctx, command)
+		}
+		return "", fmt.Errorf("unexpected bird command %q", command)
+	}
+}
+
 
 func sampleWGConfig() string {
 	return "# 4242421234 - test@example.com\n" +
@@ -193,7 +213,9 @@ func TestInfoHandler_FullResponseMPBGP(t *testing.T) {
 	birdProtoOutput := "Name     Proto      Table      State  Since       Info\n" +
 		"\n" +
 		"DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "DN42_4242421234_v6"}, birdProtoOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols DN42_4242421234_v6": birdProtoOutput,
+	})
 
 	birdAllOutput := "DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n" +
 		"  Channel ipv6\n" +
@@ -208,7 +230,9 @@ func TestInfoHandler_FullResponseMPBGP(t *testing.T) {
 		"    Preference:     100\n" +
 		"    Output filter:  (unnamed)\n" +
 		"    Routes:         15 imported, 25 exported, 8 preferred\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "all", "DN42_4242421234_v6"}, birdAllOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols all DN42_4242421234_v6": birdAllOutput,
+	})
 
 	rec := doRequest(handler, http.MethodPost, "/info", "4242421234", nil)
 
@@ -295,7 +319,9 @@ func TestInfoHandler_SessionIPv6Only(t *testing.T) {
 	birdProtoOutput := "Name     Proto      Table      State  Since       Info\n" +
 		"\n" +
 		"DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "DN42_4242421234_v6"}, birdProtoOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols DN42_4242421234_v6": birdProtoOutput,
+	})
 
 	birdAllOutput := "DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n" +
 		"  Channel ipv6\n" +
@@ -303,7 +329,9 @@ func TestInfoHandler_SessionIPv6Only(t *testing.T) {
 		"    Table:          master6\n" +
 		"    Output filter:  (unnamed)\n" +
 		"    Routes:         5 imported, 10 exported, 3 preferred\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "all", "DN42_4242421234_v6"}, birdAllOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols all DN42_4242421234_v6": birdAllOutput,
+	})
 
 	rec := doRequest(handler, http.MethodPost, "/info", "4242421234", nil)
 
@@ -339,7 +367,9 @@ func TestInfoHandler_SessionIPv4Only(t *testing.T) {
 	birdProtoOutput := "Name     Proto      Table      State  Since       Info\n" +
 		"\n" +
 		"DN42_4242421234_v4 BGP        ---        up     2024-01-01  Established\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "DN42_4242421234_v4"}, birdProtoOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols DN42_4242421234_v4": birdProtoOutput,
+	})
 
 	birdAllOutput := "DN42_4242421234_v4 BGP        ---        up     2024-01-01  Established\n" +
 		"  Channel ipv4\n" +
@@ -347,7 +377,9 @@ func TestInfoHandler_SessionIPv4Only(t *testing.T) {
 		"    Table:          master4\n" +
 		"    Output filter:  (unnamed)\n" +
 		"    Routes:         5 imported, 10 exported, 3 preferred\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "all", "DN42_4242421234_v4"}, birdAllOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols all DN42_4242421234_v4": birdAllOutput,
+	})
 
 	rec := doRequest(handler, http.MethodPost, "/info", "4242421234", nil)
 
@@ -383,7 +415,9 @@ func TestInfoHandler_SessionDualSeparate(t *testing.T) {
 	birdV6Output := "Name     Proto      Table      State  Since       Info\n" +
 		"\n" +
 		"DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "DN42_4242421234_v6"}, birdV6Output)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols DN42_4242421234_v6": birdV6Output,
+	})
 
 	birdV6AllOutput := "DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n" +
 		"  Channel ipv6\n" +
@@ -391,12 +425,16 @@ func TestInfoHandler_SessionDualSeparate(t *testing.T) {
 		"    Table:          master6\n" +
 		"    Output filter:  (unnamed)\n" +
 		"    Routes:         5 imported, 10 exported, 3 preferred\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "all", "DN42_4242421234_v6"}, birdV6AllOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols all DN42_4242421234_v6": birdV6AllOutput,
+	})
 
 	birdV4Output := "Name     Proto      Table      State  Since       Info\n" +
 		"\n" +
 		"DN42_4242421234_v4 BGP        ---        up     2024-01-01  Established\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "DN42_4242421234_v4"}, birdV4Output)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols DN42_4242421234_v4": birdV4Output,
+	})
 
 	birdV4AllOutput := "DN42_4242421234_v4 BGP        ---        up     2024-01-01  Established\n" +
 		"  Channel ipv4\n" +
@@ -404,7 +442,9 @@ func TestInfoHandler_SessionDualSeparate(t *testing.T) {
 		"    Table:          master4\n" +
 		"    Output filter:  (unnamed)\n" +
 		"    Routes:         3 imported, 5 exported, 2 preferred\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "all", "DN42_4242421234_v4"}, birdV4AllOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols all DN42_4242421234_v4": birdV4AllOutput,
+	})
 
 	rec := doRequest(handler, http.MethodPost, "/info", "4242421234", nil)
 
@@ -464,7 +504,9 @@ func TestInfoHandler_RoundTrip(t *testing.T) {
 	birdProtoOutput := "Name     Proto      Table      State  Since       Info\n" +
 		"\n" +
 		"DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "DN42_4242421234_v6"}, birdProtoOutput)
+	attachBirdOutputs(infoHandler, map[string]string{
+		"show protocols DN42_4242421234_v6": birdProtoOutput,
+	})
 
 	birdAllOutput := "DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n" +
 		"  Channel ipv6\n" +
@@ -477,7 +519,9 @@ func TestInfoHandler_RoundTrip(t *testing.T) {
 		"    Table:          master4\n" +
 		"    Output filter:  (unnamed)\n" +
 		"    Routes:         15 imported, 25 exported, 8 preferred\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "all", "DN42_4242421234_v6"}, birdAllOutput)
+	attachBirdOutputs(infoHandler, map[string]string{
+		"show protocols all DN42_4242421234_v6": birdAllOutput,
+	})
 
 	infoRec := doRequest(infoHandler, http.MethodPost, "/info", "4242421234", nil)
 	if infoRec.Code != http.StatusOK {
@@ -536,7 +580,9 @@ func TestInfoHandler_BirdStatusNotEstablished(t *testing.T) {
 	birdProtoOutput := "Name     Proto      Table      State  Since       Info\n" +
 		"\n" +
 		"DN42_4242421234_v6 BGP        ---        start  2024-01-01  Active Socket: Connection refused\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "DN42_4242421234_v6"}, birdProtoOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols DN42_4242421234_v6": birdProtoOutput,
+	})
 
 	rec := doRequest(handler, http.MethodPost, "/info", "4242421234", nil)
 
@@ -580,7 +626,9 @@ func TestInfoHandler_ResponseJSONStructure(t *testing.T) {
 	birdProtoOutput := "Name     Proto      Table      State  Since       Info\n" +
 		"\n" +
 		"DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "DN42_4242421234_v6"}, birdProtoOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols DN42_4242421234_v6": birdProtoOutput,
+	})
 
 	birdAllOutput := "DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n" +
 		"  Channel ipv6\n" +
@@ -588,7 +636,9 @@ func TestInfoHandler_ResponseJSONStructure(t *testing.T) {
 		"    Table:          master6\n" +
 		"    Output filter:  (unnamed)\n" +
 		"    Routes:         10 imported, 20 exported, 5 preferred\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "all", "DN42_4242421234_v6"}, birdAllOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols all DN42_4242421234_v6": birdAllOutput,
+	})
 
 	rec := doRequest(handler, http.MethodPost, "/info", "4242421234", nil)
 
@@ -659,14 +709,18 @@ func TestInfoHandler_WGNoDevice(t *testing.T) {
 	birdProtoOutput := "Name     Proto      Table      State  Since       Info\n" +
 		"\n" +
 		"DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "DN42_4242421234_v6"}, birdProtoOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols DN42_4242421234_v6": birdProtoOutput,
+	})
 
 	birdAllOutput := "DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n" +
 		"  Channel ipv6\n" +
 		"    State:          UP\n" +
 		"    Output filter:  (unnamed)\n" +
 		"    Routes:         5 imported, 10 exported, 3 preferred\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "all", "DN42_4242421234_v6"}, birdAllOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols all DN42_4242421234_v6": birdAllOutput,
+	})
 
 	rec := doRequest(handler, http.MethodPost, "/info", "4242421234", nil)
 
@@ -715,14 +769,18 @@ func TestInfoHandler_MinimalWGConfig(t *testing.T) {
 	birdProtoOutput := "Name     Proto      Table      State  Since       Info\n" +
 		"\n" +
 		"DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "DN42_4242421234_v6"}, birdProtoOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols DN42_4242421234_v6": birdProtoOutput,
+	})
 
 	birdAllOutput := "DN42_4242421234_v6 BGP        ---        up     2024-01-01  Established\n" +
 		"  Channel ipv6\n" +
 		"    State:          UP\n" +
 		"    Output filter:  (unnamed)\n" +
 		"    Routes:         5 imported, 10 exported, 3 preferred\n"
-	cmd.setOutput("birdc", []string{"-s", cfg.BirdCtlPath, "show", "protocols", "all", "DN42_4242421234_v6"}, birdAllOutput)
+	attachBirdOutputs(handler, map[string]string{
+		"show protocols all DN42_4242421234_v6": birdAllOutput,
+	})
 
 	rec := doRequest(handler, http.MethodPost, "/info", "4242421234", nil)
 

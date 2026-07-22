@@ -9,15 +9,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/birdctl"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
 )
 
 type RunFunc func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error)
 
 type RemoveHandler struct {
-	cfg    *config.Config
-	runCmd RunFunc
-	remove func(name string) error
+	cfg       *config.Config
+	runCmd    RunFunc
+	remove    func(name string) error
+	birdQuery func(ctx context.Context, command string) (string, error)
 }
 
 func NewRemoveHandler(cfg *config.Config, runCmd RunFunc, remove func(name string) error) *RemoveHandler {
@@ -50,7 +52,15 @@ func (h *RemoveHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.remove(fmt.Sprintf("/etc/wireguard/%s.conf", iface))
 	h.remove(fmt.Sprintf("/etc/bird/dn42_peers/%d.conf", asn))
 
-	h.runCmd(ctx, "birdc", []string{"-s", h.cfg.BirdCtlPath, "c"}, 10*time.Second)
+	birdQuery := h.birdQuery
+	if birdQuery == nil {
+		birdQuery = func(ctx context.Context, command string) (string, error) {
+			qctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			return birdctl.Query(qctx, h.cfg.BirdCtlPath, command)
+		}
+	}
+	birdQuery(ctx, "configure")
 
 	if h.cfg.VnstatAutoRemove {
 		h.runCmd(ctx, "vnstat", []string{"--remove", "-i", iface, "--force"}, 10*time.Second)

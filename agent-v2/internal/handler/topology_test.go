@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/middleware"
@@ -123,13 +124,11 @@ func TestParseBabelInterfacesEdgeCases(t *testing.T) {
 
 func TestTopologyWithValidAuth(t *testing.T) {
 	cfg := configTestCfg()
-	mockBird := func(_ context.Context, args []string) (string, error) {
-		for _, a := range args {
-			if a == "interfaces" {
-				return "BABEL 100 ready.\n" +
-					"Interface    State Auth RXcost Nbrs Timer NextHop(v4) NextHop(v6)\n" +
-					"wg0          Up    no   96     1    5.000 172.20.0.1  fd42:42::1\n", nil
-			}
+	mockBird := func(_ context.Context, command string) (string, error) {
+		if strings.Contains(command, "interfaces") {
+			return "BABEL 100 ready.\n" +
+				"Interface    State Auth RXcost Nbrs Timer NextHop(v4) NextHop(v6)\n" +
+				"wg0          Up    no   96     1    5.000 172.20.0.1  fd42:42::1\n", nil
 		}
 		return "BABEL 100 ready.\n" +
 			"fe80::abcd    wg0     96    10    123\n", nil
@@ -168,7 +167,7 @@ func TestTopologyWithValidAuth(t *testing.T) {
 
 func TestTopologyWithInvalidAuth(t *testing.T) {
 	cfg := configTestCfg()
-	mockBird := func(_ context.Context, _ []string) (string, error) {
+	mockBird := func(_ context.Context, _ string) (string, error) {
 		t.Fatal("bird command should not be called when auth fails")
 		return "", nil
 	}
@@ -189,7 +188,7 @@ func TestTopologyWithInvalidAuth(t *testing.T) {
 
 func TestTopologyHandlesBirdcFailure(t *testing.T) {
 	cfg := configTestCfg()
-	mockBird := func(_ context.Context, _ []string) (string, error) {
+	mockBird := func(_ context.Context, _ string) (string, error) {
 		return "", errors.New("birdc not available")
 	}
 

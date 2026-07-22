@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/birdctl"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/model"
 )
 
@@ -111,14 +112,19 @@ func extractNeighbor(block string) string {
 }
 
 func ParseBirdStatus(session, output string) (*model.BirdSessionStatus, error) {
-	lines := strings.Split(output, "\n")
-	if len(lines) < 3 {
-		return nil, fmt.Errorf("unexpected birdc output: expected at least 3 lines, got %d", len(lines))
+	var fields []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) > 0 && parts[0] == session {
+			fields = parts
+			break
+		}
 	}
-
-	thirdLine := strings.TrimSpace(lines[2])
-	fields := strings.Fields(thirdLine)
-	if len(fields) == 0 || fields[0] != session {
+	if len(fields) == 0 {
 		return nil, fmt.Errorf("session %q not found in birdc output", session)
 	}
 
@@ -135,9 +141,11 @@ func ParseBirdStatus(session, output string) (*model.BirdSessionStatus, error) {
 }
 
 func GetProtocolStatus(ctx context.Context, session, ctlPath string) (*model.BirdSessionStatus, error) {
-	output, err := RunCommand(ctx, "birdc", []string{"-s", ctlPath, "show", "protocols", session}, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	output, err := birdctl.Query(ctx, ctlPath, "show protocols "+session)
 	if err != nil {
-		return nil, fmt.Errorf("birdc show protocols failed: %w", err)
+		return nil, fmt.Errorf("bird show protocols failed: %w", err)
 	}
 	return ParseBirdStatus(session, output)
 }
@@ -174,19 +182,25 @@ func ParseBirdAll(session, output string) (map[string]map[string]string, error) 
 }
 
 func GetProtocolAll(ctx context.Context, session, ctlPath string) (map[string]map[string]string, error) {
-	output, err := RunCommand(ctx, "birdc", []string{"-s", ctlPath, "show", "protocols", "all", session}, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	output, err := birdctl.Query(ctx, ctlPath, "show protocols all "+session)
 	if err != nil {
-		return nil, fmt.Errorf("birdc show protocols all failed: %w", err)
+		return nil, fmt.Errorf("bird show protocols all failed: %w", err)
 	}
 	return ParseBirdAll(session, output)
 }
 
 func ReloadConfig(ctx context.Context, ctlPath string) error {
-	_, err := RunCommand(ctx, "birdc", []string{"-s", ctlPath, "configure"}, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, err := birdctl.Query(ctx, ctlPath, "configure")
 	return err
 }
 
 func RestartProtocol(ctx context.Context, session, ctlPath string) error {
-	_, err := RunCommand(ctx, "birdc", []string{"-s", ctlPath, "restart", session}, 10*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, err := birdctl.Query(ctx, ctlPath, "restart "+session)
 	return err
 }

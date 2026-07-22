@@ -10,28 +10,34 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/birdctl"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/model"
-	"github.com/bingxin666/dn42-bot/agent-v2/internal/service"
 )
 
-type BirdCommand func(ctx context.Context, args []string) (string, error)
+// BirdCommand runs a BIRD control command string (without birdc flags).
+type BirdCommand func(ctx context.Context, command string) (string, error)
 
-func DefaultBirdCommand() BirdCommand {
-	return func(ctx context.Context, args []string) (string, error) {
-		return service.RunCommand(ctx, "birdc", args, 10*time.Second)
+func DefaultBirdCommand(socketPath string) BirdCommand {
+	return func(ctx context.Context, command string) (string, error) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		return birdctl.Query(ctx, socketPath, command)
 	}
 }
 
 func TopologyHandler(cfg *config.Config, bird BirdCommand) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		result := buildTopology(r.Context(), cfg.BirdCtlPath, bird)
+		if bird == nil {
+			bird = DefaultBirdCommand(cfg.BirdCtlPath)
+		}
+		result := buildTopology(r.Context(), bird)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(result)
 	})
 }
 
-func buildTopology(ctx context.Context, ctlPath string, bird BirdCommand) model.IGPTopologyResult {
+func buildTopology(ctx context.Context, bird BirdCommand) model.IGPTopologyResult {
 	result := model.IGPTopologyResult{
 		Protocol:   "babel",
 		Interfaces: []model.BabelInterface{},
@@ -39,14 +45,14 @@ func buildTopology(ctx context.Context, ctlPath string, bird BirdCommand) model.
 		Errors:     []string{},
 	}
 
-	ifaceOut, err := bird(ctx, []string{"-s", ctlPath, "show", "babel", "interfaces"})
+	ifaceOut, err := bird(ctx, "show babel interfaces")
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("show babel interfaces failed: %v", err))
 	} else {
 		result.Interfaces = ParseBabelInterfaces(ifaceOut)
 	}
 
-	neighOut, err := bird(ctx, []string{"-s", ctlPath, "show", "babel", "neighbors"})
+	neighOut, err := bird(ctx, "show babel neighbors")
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("show babel neighbors failed: %v", err))
 	} else {

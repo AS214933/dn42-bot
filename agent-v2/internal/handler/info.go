@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/birdctl"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/model"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/service"
@@ -74,6 +76,8 @@ type InfoHandler struct {
 	WGConfDir   string
 	BirdConfDir string
 	RunCmd      CmdRunner
+	// BirdQuery runs one BIRD control command. Defaults to birdctl.Query.
+	BirdQuery   func(ctx context.Context, command string) (string, error)
 }
 
 func (h *InfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -160,9 +164,18 @@ func (h *InfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	transferOutput, _ := h.RunCmd(ctx, "wg", []string{"show", iface, "transfer"}, 10*time.Second)
 	wgRX, wgTX, _ := service.ParseTransfer(transferOutput)
 
+	birdQuery := h.BirdQuery
+	if birdQuery == nil {
+		birdQuery = func(ctx context.Context, command string) (string, error) {
+			qctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			return birdctl.Query(qctx, h.Cfg.BirdCtlPath, command)
+		}
+	}
+
 	birdStatus := make(map[string]BirdStatusTuple)
 	for _, sessionName := range sessionNames {
-		statusOutput, err := h.RunCmd(ctx, "birdc", []string{"-s", h.Cfg.BirdCtlPath, "show", "protocols", sessionName}, 10*time.Second)
+		statusOutput, err := birdQuery(ctx, "show protocols "+sessionName)
 		if err != nil {
 			birdStatus[sessionName] = BirdStatusTuple{State: "N/A", Info: "", Routes: map[string]string{}}
 			continue
@@ -181,7 +194,7 @@ func (h *InfoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if parsed.State == "Established" {
-			allOutput, err := h.RunCmd(ctx, "birdc", []string{"-s", h.Cfg.BirdCtlPath, "show", "protocols", "all", sessionName}, 10*time.Second)
+			allOutput, err := birdQuery(ctx, "show protocols all "+sessionName)
 			if err == nil {
 				channels, err := service.ParseBirdAll(sessionName, allOutput)
 				if err == nil {
