@@ -57,8 +57,10 @@ func RouteHandler(cfg *config.Config, runner BirdcRunner) http.Handler {
 				http.Error(w, "request timeout", http.StatusRequestTimeout)
 				return
 			}
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			if strings.TrimSpace(output) == "" {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 
 		w.Header().Set("Content-Type", "text/plain")
@@ -85,8 +87,10 @@ func PathHandler(cfg *config.Config, runner BirdcRunner) http.Handler {
 				http.Error(w, "request timeout", http.StatusRequestTimeout)
 				return
 			}
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			if strings.TrimSpace(output) == "" {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 
 		for _, line := range strings.Split(output, "\n") {

@@ -619,11 +619,11 @@ The agent selects the IPv4 or IPv6 BIRD table based on whether the target contai
 **Response (plain text):** Raw BIRD `show route` output.
 
 **Status Codes:**
-- `200 OK` — Route lookup result
+- `200 OK` — Route lookup result, including BIRD messages such as `Network not in table` when birdc exits non-zero but still produced output
 - `403 Forbidden` — Invalid or missing token
 - `400 Bad Request` — Empty body
 - `408 Request Timeout` — BIRD query did not complete within 30 seconds
-- `500 Internal Server Error` — BIRD command failed
+- `500 Internal Server Error` — BIRD command failed with no output
 
 **Example:**
 ```bash
@@ -649,9 +649,9 @@ fd42:xxxx::2
 - `200 OK` — AS path found
 - `403 Forbidden` — Invalid or missing token
 - `400 Bad Request` — Empty body
-- `404 Not Found` — No route found or AS path not present in route attributes
+- `404 Not Found` — No route found or AS path not present in route attributes (including birdc non-zero responses without `BGP.as_path`)
 - `408 Request Timeout` — BIRD query did not complete within 30 seconds
-- `500 Internal Server Error` — BIRD command failed
+- `500 Internal Server Error` — BIRD command failed with no output
 
 **Example:**
 ```bash

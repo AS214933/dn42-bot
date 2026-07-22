@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -294,5 +295,74 @@ func TestPathEmptyBody(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for empty target, got %d", rec.Code)
+	}
+}
+
+func TestRouteBirdcNonZeroWithOutput(t *testing.T) {
+	t.Parallel()
+	cfg := routeTestCfg()
+	output := "BIRD 2.0.12 ready.\nNetwork not in table\n"
+	handler := middleware.AuthMiddleware(cfg.Secret)(RouteHandler(cfg, mockRunner(output, errors.New("exit status 1"))))
+
+	req := httptest.NewRequest(http.MethodPost, "/route", strings.NewReader("127.0.0.1"))
+	req.Header.Set("X-DN42-Bot-Api-Secret-Token", testSecret)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for birdc non-zero with output, got %d body %q", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != output {
+		t.Errorf("expected body %q, got %q", output, rec.Body.String())
+	}
+}
+
+func TestRouteBirdcFailureEmptyOutput(t *testing.T) {
+	t.Parallel()
+	cfg := routeTestCfg()
+	handler := middleware.AuthMiddleware(cfg.Secret)(RouteHandler(cfg, mockRunner("", errors.New("exit status 1"))))
+
+	req := httptest.NewRequest(http.MethodPost, "/route", strings.NewReader("127.0.0.1"))
+	req.Header.Set("X-DN42-Bot-Api-Secret-Token", testSecret)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for empty birdc failure, got %d", rec.Code)
+	}
+}
+
+func TestPathBirdcNonZeroWithoutASPath(t *testing.T) {
+	t.Parallel()
+	cfg := routeTestCfg()
+	output := "BIRD 2.0.12 ready.\nNetwork not in table\n"
+	handler := middleware.AuthMiddleware(cfg.Secret)(PathHandler(cfg, mockRunner(output, errors.New("exit status 1"))))
+
+	req := httptest.NewRequest(http.MethodPost, "/path", strings.NewReader("127.0.0.1"))
+	req.Header.Set("X-DN42-Bot-Api-Secret-Token", testSecret)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when birdc non-zero has no AS path, got %d body %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPathBirdcFailureEmptyOutput(t *testing.T) {
+	t.Parallel()
+	cfg := routeTestCfg()
+	handler := middleware.AuthMiddleware(cfg.Secret)(PathHandler(cfg, mockRunner("", errors.New("exit status 1"))))
+
+	req := httptest.NewRequest(http.MethodPost, "/path", strings.NewReader("127.0.0.1"))
+	req.Header.Set("X-DN42-Bot-Api-Secret-Token", testSecret)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for empty birdc failure, got %d", rec.Code)
 	}
 }
