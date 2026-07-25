@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -70,6 +71,11 @@ looking_glass:
   request_timeout: "20s"
   max_query_length: 2048
   max_output_bytes: 32768
+peerfinder:
+  enabled: true
+  host: "::1"
+  port: 9001
+  secret_key: "` + strings.Repeat("ab", 32) + `"
 `
 	path := writeTempConfig(t, yaml)
 
@@ -195,6 +201,15 @@ looking_glass:
 	if cfg.LookingGlass.RequestTimeout != 20*time.Second || cfg.LookingGlass.MaxQueryLength != 2048 || cfg.LookingGlass.MaxOutputBytes != 32768 {
 		t.Errorf("LookingGlass request limits = %+v", cfg.LookingGlass)
 	}
+	if !cfg.PeerFinder.Enabled {
+		t.Error("PeerFinder.Enabled = false, want true")
+	}
+	if cfg.PeerFinder.Host != "::1" || cfg.PeerFinder.Port != 9001 {
+		t.Errorf("PeerFinder bind = %s:%d, want ::1:9001", cfg.PeerFinder.Host, cfg.PeerFinder.Port)
+	}
+	if len(cfg.PeerFinder.HMACKey) != 32 || cfg.PeerFinder.HMACKey[0] != 0xab {
+		t.Errorf("PeerFinder.HMACKey = %x, want decoded 32-byte key", cfg.PeerFinder.HMACKey)
+	}
 }
 
 func TestLoadDefaultValues(t *testing.T) {
@@ -281,6 +296,80 @@ vnstat_auto_add: false
 	}
 	if cfg.LookingGlass.RequestTimeout != 15*time.Second || cfg.LookingGlass.MaxQueryLength != 4096 || cfg.LookingGlass.MaxOutputBytes != 64*1024 {
 		t.Errorf("LookingGlass request defaults = %+v", cfg.LookingGlass)
+	}
+	if cfg.PeerFinder.Enabled || cfg.PeerFinder.Host != "::" || cfg.PeerFinder.Port != 9000 || len(cfg.PeerFinder.HMACKey) != 0 {
+		t.Errorf("PeerFinder defaults = %+v, want disabled on [::]:9000 without key", cfg.PeerFinder)
+	}
+}
+
+func TestLoadPeerFinderSecretKeyFileRelativeToConfig(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "peerfinder.key"), []byte(strings.Repeat("cd", 32)+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte(`
+secret: "s"
+open: false
+my_dn42_link_local_address: "fe80::1"
+my_dn42_ula_address: "fd00::1"
+my_dn42_ipv4_address: "10.0.0.1"
+my_wg_public_key: "key"
+bird_table_4: "t4"
+bird_table_6: "t6"
+peerfinder:
+  enabled: true
+  port: 9001
+  secret_key_file: "peerfinder.key"
+`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.PeerFinder.HMACKey) != 32 || cfg.PeerFinder.HMACKey[0] != 0xcd {
+		t.Fatalf("PeerFinder.HMACKey = %x", cfg.PeerFinder.HMACKey)
+	}
+	if cfg.PeerFinder.SecretKeyFile != "peerfinder.key" {
+		t.Fatalf("SecretKeyFile = %q", cfg.PeerFinder.SecretKeyFile)
+	}
+}
+
+func TestLoadRejectsInvalidPeerFinderConfig(t *testing.T) {
+	t.Parallel()
+	base := `
+secret: "s"
+port: 54321
+my_dn42_link_local_address: "fe80::1"
+my_dn42_ula_address: "fd00::1"
+my_dn42_ipv4_address: "172.20.0.1"
+bird_table_4: "master4"
+bird_table_6: "master6"
+peerfinder:
+  enabled: true
+%s
+`
+	tests := []struct {
+		name  string
+		block string
+	}{
+		{name: "missing key", block: "  port: 9001"},
+		{name: "bad key", block: "  port: 9001\n  secret_key: not-hex"},
+		{name: "short key", block: "  port: 9001\n  secret_key: abcd"},
+		{name: "bad port", block: "  port: 70000\n  secret_key: " + strings.Repeat("ab", 32)},
+		{name: "api port reuse", block: "  port: 54321\n  secret_key: " + strings.Repeat("ab", 32)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeTempConfig(t, fmt.Sprintf(base, test.block))
+			if _, err := Load(path); err == nil {
+				t.Fatal("Load() succeeded, want peerfinder validation error")
+			}
+		})
 	}
 }
 

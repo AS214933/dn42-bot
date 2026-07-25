@@ -33,6 +33,6 @@ COPY config.example.yaml /app/config.yaml
 
 WORKDIR /app
 
-EXPOSE 54321
+EXPOSE 54321 9000
 
 CMD ["./agent"]

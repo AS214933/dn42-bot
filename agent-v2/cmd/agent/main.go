@@ -21,6 +21,7 @@ import (
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/handler"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/lookingglass"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/middleware"
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/peerfinder"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/service"
 )
 
@@ -54,6 +55,9 @@ func main() {
 	r.Post("/version", handler.VersionHandler())
 	if err := registerLookingGlassRoutes(r, cfg, dnsResolver); err != nil {
 		log.Fatalf("failed to configure looking glass: %v", err)
+	}
+	if err := startPeerFinder(ctx, cfg, runCmd); err != nil {
+		log.Fatalf("failed to start peerfinder agent: %v", err)
 	}
 
 	// Auth-protected group
@@ -158,6 +162,31 @@ func main() {
 		log.Fatalf("shutdown error: %v", err)
 	}
 	log.Println("server stopped")
+}
+
+func startPeerFinder(ctx context.Context, cfg *config.Config, runner peerfinder.CommandRunner) error {
+	if !cfg.PeerFinder.Enabled {
+		return nil
+	}
+	srv, err := peerfinder.NewServer(peerfinder.Config{
+		Host:    cfg.PeerFinder.Host,
+		Port:    cfg.PeerFinder.Port,
+		HMACKey: cfg.PeerFinder.HMACKey,
+		Runner:  runner,
+	})
+	if err != nil {
+		return err
+	}
+	ln, err := srv.Listen(ctx)
+	if err != nil {
+		return err
+	}
+	go func() {
+		if err := srv.Serve(ctx, ln); err != nil {
+			log.Fatalf("peerfinder server error: %v", err)
+		}
+	}()
+	return nil
 }
 
 func registerLookingGlassRoutes(r chi.Router, cfg *config.Config, resolver handler.IPResolver) error {

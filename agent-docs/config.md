@@ -42,6 +42,12 @@ looking_glass:
   request_timeout: "15s"
   max_query_length: 4096
   max_output_bytes: 65536
+peerfinder:
+  enabled: false
+  host: "::"
+  port: 9000
+  secret_key: ""
+  # secret_key_file: "/etc/dn42-agent/peerfinder.key"
 auto_update:
   enabled: false
   channel: "candidate"
@@ -78,6 +84,7 @@ auto_update:
 | `server_url` | string | `""` | No | URL of the server this agent reports to. |
 | `dns_servers` | list of strings | `[]` | No | DNS servers used by built-in `ping`, `trace`, and `tcping` hostname resolution. Accepts `IP`, `IP:port`, or `[IPv6]:port`. Empty list uses system DNS. |
 | `looking_glass` | object | See below | No | Embedded bird-lg-go proxy-compatible read-only looking glass. |
+| `peerfinder` | object | See below | No | Optional DN42 Peer Finder measurement agent on a separate TCP listener. |
 | `auto_update` | object | See below | No | GitHub release update settings for the bare-metal agent binary. |
 
 ## `net_support` Sub-Fields
@@ -156,6 +163,20 @@ For a central frontend with fixed egress addresses, explicit `/32` and `/128` en
 - Public Internet plus DN42: `allowed_cidrs: [public, dn42]` with an empty deny list.
 
 Source checks use the TCP peer address and do not trust proxy forwarding headers.
+
+### `peerfinder`
+
+When enabled, agent-v2 starts a separate TCP listener compatible with the DN42 Peer Finder measurement agent protocol. It does not share the main HTTP API listener; `peerfinder.port` must be different from the top-level `port`.
+
+Requests and responses use the Peer Finder binary frame format: HMAC-SHA256 over `timestamp || nonce || body`, a 30-second timestamp skew limit, a nonce replay cache, and JSON bodies for the `version` and `ping` commands. The `ping` command only accepts literal IPv4 or IPv6 addresses and returns packet counts plus RTT statistics parsed from `ping -n -q -c 4 -w 6`.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `false` | Start the Peer Finder TCP measurement listener. |
+| `host` | `"::"` | IP address to bind. The default attempts a dual-stack IPv6 listener. |
+| `port` | `9000` | TCP port for Peer Finder requests. Must not equal the main agent API port. |
+| `secret_key` | `""` | 32-byte hex HMAC key returned by Peer Finder registration. Required when enabled unless `secret_key_file` is set. |
+| `secret_key_file` | `""` | File containing the same 32-byte hex key. Relative paths are resolved from the config file directory. Takes priority over `secret_key`. |
 
 ## Environment Variables
 

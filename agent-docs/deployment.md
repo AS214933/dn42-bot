@@ -123,6 +123,20 @@ dns_servers:
   - 1.1.1.1
 ```
 
+## DN42 Peer Finder Integration
+
+Enable `peerfinder` in the agent config to run the optional DN42 Peer Finder measurement agent inside agent-v2. It binds an independent TCP socket and does not reuse the main API port (`54321` by default):
+
+```yaml
+peerfinder:
+  enabled: true
+  host: "::"
+  port: 9000
+  secret_key_file: "/etc/dn42-agent/peerfinder.key"
+```
+
+Open or map `peerfinder.port` separately from the management API port. With Docker host networking, make sure the host firewall allows the Peer Finder backend to reach that TCP port. The feature uses `ping`, so `NET_RAW` or root is still required.
+
 ## bird-lg-go Frontend Integration
 
 Enable `looking_glass` in the agent config to replace a separately deployed bird-lg-go proxy. The compatible routes share the existing agent port (`54321` by default), so the frontend only needs:

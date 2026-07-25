@@ -45,6 +45,15 @@ looking_glass:
   max_query_length: 4096
   max_output_bytes: 65536
 
+# Optional DN42 Peer Finder measurement agent. This is a separate TCP listener
+# and must not reuse the main agent API port above.
+peerfinder:
+  enabled: false
+  host: "::"
+  port: 9000
+  secret_key: ""
+  # secret_key_file: "/etc/dn42-agent/peerfinder.key"
+
 # Manual update endpoints always use this configuration. Set enabled=true to
 # let the agent periodically install newer GitHub release binaries by itself.
 # Channel "candidate" includes prereleases such as alpha/beta/rc; "stable"

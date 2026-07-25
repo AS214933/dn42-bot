@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/netip"
@@ -44,6 +45,14 @@ type LookingGlassConfig struct {
 	MaxOutputBytes          int           `yaml:"max_output_bytes" json:"max_output_bytes"`
 }
 
+type PeerFinderConfig struct {
+	Enabled       bool   `yaml:"enabled" json:"enabled"`
+	Host          string `yaml:"host" json:"host"`
+	Port          int    `yaml:"port" json:"port"`
+	HMACKey       []byte `yaml:"-" json:"-"`
+	SecretKeyFile string `yaml:"secret_key_file" json:"-"`
+}
+
 type Config struct {
 	Host                   string             `yaml:"host"`
 	Port                   int                `yaml:"port"`
@@ -68,6 +77,7 @@ type Config struct {
 	DNSServers             []string           `yaml:"dns_servers"`
 	AutoUpdate             AutoUpdateConfig   `yaml:"auto_update"`
 	LookingGlass           LookingGlassConfig `yaml:"looking_glass"`
+	PeerFinder             PeerFinderConfig   `yaml:"peerfinder"`
 }
 
 type rawConfig struct {
@@ -94,6 +104,7 @@ type rawConfig struct {
 	DNSServers             []string              `yaml:"dns_servers"`
 	AutoUpdate             rawAutoUpdateConfig   `yaml:"auto_update"`
 	LookingGlass           rawLookingGlassConfig `yaml:"looking_glass"`
+	PeerFinder             rawPeerFinderConfig   `yaml:"peerfinder"`
 }
 
 type rawAutoUpdateConfig struct {
@@ -117,6 +128,14 @@ type rawLookingGlassConfig struct {
 	RequestTimeout          *string  `yaml:"request_timeout"`
 	MaxQueryLength          *int     `yaml:"max_query_length"`
 	MaxOutputBytes          *int     `yaml:"max_output_bytes"`
+}
+
+type rawPeerFinderConfig struct {
+	Enabled       bool    `yaml:"enabled"`
+	Host          *string `yaml:"host"`
+	Port          *int    `yaml:"port"`
+	SecretKey     *string `yaml:"secret_key"`
+	SecretKeyFile *string `yaml:"secret_key_file"`
 }
 
 func Load(path string) (*Config, error) {
@@ -193,6 +212,11 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	peerFinder, err := normalizePeerFinder(raw.PeerFinder, port, filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+
 	linkLocalAddr := net.ParseIP(raw.MyDN42LinkLocalAddress)
 	if linkLocalAddr == nil {
 		return nil, fmt.Errorf("invalid my_dn42_link_local_address: %q", raw.MyDN42LinkLocalAddress)
@@ -240,9 +264,70 @@ func Load(path string) (*Config, error) {
 		DNSServers:             dnsServers,
 		AutoUpdate:             autoUpdate,
 		LookingGlass:           lookingGlass,
+		PeerFinder:             peerFinder,
 	}
 
 	return cfg, nil
+}
+
+func normalizePeerFinder(raw rawPeerFinderConfig, apiPort int, configDir string) (PeerFinderConfig, error) {
+	cfg := PeerFinderConfig{
+		Enabled: raw.Enabled,
+		Host:    "::",
+		Port:    9000,
+	}
+	if raw.Host != nil && strings.TrimSpace(*raw.Host) != "" {
+		cfg.Host = strings.TrimSpace(*raw.Host)
+	}
+	if raw.Port != nil {
+		if *raw.Port <= 0 || *raw.Port > 65535 {
+			return PeerFinderConfig{}, fmt.Errorf("invalid peerfinder.port %d: expected 1-65535", *raw.Port)
+		}
+		cfg.Port = *raw.Port
+	}
+	if !cfg.Enabled {
+		return cfg, nil
+	}
+	if cfg.Port == apiPort {
+		return PeerFinderConfig{}, fmt.Errorf("invalid peerfinder.port %d: must not reuse the agent API port", cfg.Port)
+	}
+
+	key, keyFile, err := loadPeerFinderKey(raw, configDir)
+	if err != nil {
+		return PeerFinderConfig{}, err
+	}
+	cfg.HMACKey = key
+	cfg.SecretKeyFile = keyFile
+	return cfg, nil
+}
+
+func loadPeerFinderKey(raw rawPeerFinderConfig, configDir string) ([]byte, string, error) {
+	keySource := ""
+	keyFile := ""
+	if raw.SecretKeyFile != nil && strings.TrimSpace(*raw.SecretKeyFile) != "" {
+		keyFile = strings.TrimSpace(*raw.SecretKeyFile)
+		readPath := keyFile
+		if !filepath.IsAbs(readPath) {
+			readPath = filepath.Join(configDir, readPath)
+		}
+		data, err := os.ReadFile(readPath)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to read peerfinder.secret_key_file: %w", err)
+		}
+		keySource = string(data)
+	} else if raw.SecretKey != nil {
+		keySource = *raw.SecretKey
+	}
+
+	keySource = strings.TrimSpace(keySource)
+	if keySource == "" {
+		return nil, "", fmt.Errorf("peerfinder.secret_key or peerfinder.secret_key_file is required when peerfinder is enabled")
+	}
+	key, err := hex.DecodeString(keySource)
+	if err != nil || len(key) != 32 {
+		return nil, "", fmt.Errorf("invalid peerfinder secret key: expected 32-byte hex string")
+	}
+	return key, keyFile, nil
 }
 
 func normalizeLookingGlass(raw rawLookingGlassConfig) (LookingGlassConfig, error) {
