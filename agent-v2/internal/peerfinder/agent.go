@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -111,8 +112,125 @@ func (s *Server) Addr() string {
 }
 
 func (s *Server) Listen(ctx context.Context) (net.Listener, error) {
+	if isUnspecifiedHost(s.host) {
+		return s.listenDualStack(ctx)
+	}
 	lc := net.ListenConfig{Control: disableIPv6Only}
 	return lc.Listen(ctx, "tcp", s.Addr())
+}
+
+func (s *Server) listenDualStack(ctx context.Context) (net.Listener, error) {
+	port := strconv.Itoa(s.port)
+	addr4 := net.JoinHostPort("0.0.0.0", port)
+	addr6 := net.JoinHostPort("::", port)
+
+	lc4 := net.ListenConfig{}
+	ln4, err4 := lc4.Listen(ctx, "tcp4", addr4)
+
+	lc6 := net.ListenConfig{Control: enableIPv6Only}
+	ln6, err6 := lc6.Listen(ctx, "tcp6", addr6)
+
+	if ln4 != nil && ln6 != nil {
+		return newDualListener(ln4, ln6), nil
+	}
+	if ln4 != nil {
+		if ln6 != nil {
+			_ = ln6.Close()
+		}
+		return ln4, nil
+	}
+	if ln6 != nil {
+		if ln4 != nil {
+			_ = ln4.Close()
+		}
+		return ln6, nil
+	}
+	return nil, fmt.Errorf("peerfinder failed to listen on v4 (%v) and v6 (%v)", err4, err6)
+}
+
+type dualListener struct {
+	v4     net.Listener
+	v6     net.Listener
+	ctx    context.Context
+	cancel context.CancelFunc
+	conns  chan net.Conn
+	err    error
+	once   sync.Once
+	addr   net.Addr
+}
+
+func newDualListener(v4, v6 net.Listener) net.Listener {
+	ctx, cancel := context.WithCancel(context.Background())
+	d := &dualListener{
+		v4:     v4,
+		v6:     v6,
+		ctx:    ctx,
+		cancel: cancel,
+		conns:  make(chan net.Conn, 2),
+		addr:   v4.Addr(),
+	}
+	go d.acceptLoop(v4)
+	go d.acceptLoop(v6)
+	return d
+}
+
+func (d *dualListener) acceptLoop(ln net.Listener) {
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			if d.ctx.Err() == nil {
+				d.err = err
+				_ = d.v4.Close()
+				_ = d.v6.Close()
+			}
+			d.cancel()
+			return
+		}
+		select {
+		case d.conns <- conn:
+		case <-d.ctx.Done():
+			_ = conn.Close()
+			return
+		}
+	}
+}
+
+func (d *dualListener) Accept() (net.Conn, error) {
+	select {
+	case conn := <-d.conns:
+		return conn, nil
+	case <-d.ctx.Done():
+		if d.err != nil {
+			return nil, d.err
+		}
+		return nil, net.ErrClosed
+	}
+}
+
+func (d *dualListener) Close() error {
+	d.once.Do(func() {
+		d.cancel()
+		_ = d.v4.Close()
+		_ = d.v6.Close()
+		for {
+			select {
+			case conn := <-d.conns:
+				_ = conn.Close()
+			default:
+				return
+			}
+		}
+	})
+	return nil
+}
+
+func (d *dualListener) Addr() net.Addr {
+	return d.addr
+}
+
+func isUnspecifiedHost(host string) bool {
+	host = strings.TrimSpace(host)
+	return host == "" || host == "::" || host == "0.0.0.0"
 }
 
 func (s *Server) ListenAndServe(ctx context.Context) error {
@@ -129,7 +247,12 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		_ = ln.Close()
 	}()
 
-	s.logf("DN42 Peer Finder Agent %s listening on %s", AgentVersion, ln.Addr())
+	if dl, ok := ln.(*dualListener); ok {
+		s.logf("DN42 Peer Finder Agent %s listening on %s", AgentVersion, dl.v4.Addr())
+		s.logf("DN42 Peer Finder Agent %s listening on %s", AgentVersion, dl.v6.Addr())
+	} else {
+		s.logf("DN42 Peer Finder Agent %s listening on %s", AgentVersion, ln.Addr())
+	}
 	slots := make(chan struct{}, s.maxWorkers)
 	for {
 		select {
@@ -165,6 +288,15 @@ func disableIPv6Only(network, _ string, c syscall.RawConn) error {
 	}
 	return c.Control(func(fd uintptr) {
 		_ = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY, 0)
+	})
+}
+
+func enableIPv6Only(network, _ string, c syscall.RawConn) error {
+	if network != "tcp6" {
+		return nil
+	}
+	return c.Control(func(fd uintptr) {
+		_ = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY, 1)
 	})
 }
 

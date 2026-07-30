@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -241,4 +242,61 @@ func hmacEqual(a, b []byte) bool {
 		same |= a[i] ^ b[i]
 	}
 	return same == 0
+}
+
+func TestDualStackListenerAcceptsBothIPv4AndIPv6(t *testing.T) {
+	key := make([]byte, 32)
+
+	tmpLn, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to find free port: %v", err)
+	}
+	port := tmpLn.Addr().(*net.TCPAddr).Port
+	_ = tmpLn.Close()
+
+	server, err := NewServer(Config{
+		Host:    "::",
+		Port:    port,
+		HMACKey: key,
+		Runner: func(context.Context, string, []string, time.Duration) (string, error) {
+			return "", nil
+		},
+		Logger: log.New(io.Discard, "", 0),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := server.Listen(context.Background())
+	if err != nil {
+		t.Fatalf("listen failed: %v", err)
+	}
+	defer ln.Close()
+
+	dialAndAccept := func(addr string) {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			conn, err := ln.Accept()
+			if err != nil {
+				t.Errorf("accept from %s failed: %v", addr, err)
+				return
+			}
+			_ = conn.Close()
+		}()
+
+		conn, err := net.Dial("tcp", addr)
+		if err != nil {
+			t.Fatalf("dial %s failed: %v", addr, err)
+		}
+		_ = conn.Close()
+
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for accept from %s", addr)
+		}
+	}
+
+	dialAndAccept(fmt.Sprintf("127.0.0.1:%d", port))
+	dialAndAccept(fmt.Sprintf("[::1]:%d", port))
 }
