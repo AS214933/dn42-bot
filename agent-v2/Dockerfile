@@ -25,6 +25,7 @@ RUN apt-get update && \
     iputils-ping \
     vnstat \
     ca-certificates \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=agent-builder /agent /app/agent

@@ -112,6 +112,7 @@ The Docker image includes these packages (installed automatically):
 - `iputils-ping` — ICMP ping
 - `vnstat` — network traffic monitoring
 - `ca-certificates` — TLS certificate bundle
+- `git` — git repository client used by the optional `backup` feature
 
 Traceroute/MTR is built into the agent binary via `github.com/nxtrace/NTrace-core` (GPL-3.0). TCPing is built into the agent binary using Go's `net.Dialer`; no external `traceroute`, `mtr`, or `tcping` command is required for Docker or bare-metal deployments.
 

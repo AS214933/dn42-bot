@@ -58,6 +58,15 @@ auto_update:
   agent_path: "/var/lib/dn42-agent/agent"
   service_name: "custom-agent.service"
   service_path: "/etc/systemd/system/custom-agent.service"
+backup:
+  enabled: true
+  state_file: "/var/lib/dn42-agent/backup.yaml"
+  work_dir: "/var/lib/dn42-agent/backup"
+  bird_dir: "/etc/bird"
+  wireguard_dir: "/etc/wireguard"
+  interval: "10m"
+  on_boot_delay: "1m"
+  random_delay: "10s"
 looking_glass:
   enabled: true
   allowed_cidrs:
@@ -186,6 +195,15 @@ peerfinder:
 	if cfg.AutoUpdate.ServicePath != "/etc/systemd/system/custom-agent.service" {
 		t.Errorf("AutoUpdate.ServicePath = %q", cfg.AutoUpdate.ServicePath)
 	}
+	if !cfg.Backup.Enabled {
+		t.Error("Backup.Enabled = false, want true")
+	}
+	if cfg.Backup.StateFile != "/var/lib/dn42-agent/backup.yaml" || cfg.Backup.WorkDir != "/var/lib/dn42-agent/backup" {
+		t.Errorf("Backup paths = %+v", cfg.Backup)
+	}
+	if cfg.Backup.Interval != 10*time.Minute || cfg.Backup.OnBootDelay != time.Minute || cfg.Backup.RandomDelay != 10*time.Second {
+		t.Errorf("Backup durations = %+v", cfg.Backup)
+	}
 	if !cfg.LookingGlass.Enabled || !cfg.LookingGlass.TracerouteEnabled {
 		t.Errorf("LookingGlass enable flags = %+v", cfg.LookingGlass)
 	}
@@ -257,6 +275,15 @@ vnstat_auto_add: false
 	}
 	if cfg.ServerURL != "" {
 		t.Errorf("ServerURL = %q, want empty", cfg.ServerURL)
+	}
+	if cfg.Backup.Enabled {
+		t.Error("Backup.Enabled = true, want false")
+	}
+	if cfg.Backup.StateFile != "/etc/dn42-agent/backup.yaml" || cfg.Backup.WorkDir != "/var/lib/dn42-agent/backup" {
+		t.Errorf("Backup defaults = %+v", cfg.Backup)
+	}
+	if cfg.Backup.Interval != 5*time.Minute || cfg.Backup.OnBootDelay != 3*time.Minute || cfg.Backup.RandomDelay != 30*time.Second {
+		t.Errorf("Backup default durations = %+v", cfg.Backup)
 	}
 	if len(cfg.DNSServers) != 0 {
 		t.Errorf("DNSServers = %v, want empty", cfg.DNSServers)

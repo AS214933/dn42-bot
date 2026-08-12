@@ -48,6 +48,15 @@ peerfinder:
   port: 9000
   secret_key: ""
   # secret_key_file: "/etc/dn42-agent/peerfinder.key"
+backup:
+  enabled: false
+  state_file: "/etc/dn42-agent/backup.yaml"
+  work_dir: "/var/lib/dn42-agent/backup"
+  bird_dir: "/etc/bird"
+  wireguard_dir: "/etc/wireguard"
+  interval: "5m"
+  on_boot_delay: "3m"
+  random_delay: "30s"
 auto_update:
   enabled: false
   channel: "candidate"
@@ -85,6 +94,7 @@ auto_update:
 | `dns_servers` | list of strings | `[]` | No | DNS servers used by built-in `ping`, `trace`, and `tcping` hostname resolution. Accepts `IP`, `IP:port`, or `[IPv6]:port`. Empty list uses system DNS. |
 | `looking_glass` | object | See below | No | Embedded bird-lg-go proxy-compatible read-only looking glass. |
 | `peerfinder` | object | See below | No | Optional DN42 Peer Finder measurement agent on a separate TCP listener. |
+| `backup` | object | See below | No | Optional DN42 BGP/WireGuard config backup and seamless migration from the legacy shell installer. |
 | `auto_update` | object | See below | No | GitHub release update settings for the bare-metal agent binary. |
 
 ## `net_support` Sub-Fields
@@ -132,6 +142,23 @@ The updater is intended for bare-metal deployments where the operator has alread
 | `agent_path` | `"/etc/dn42-agent/agent"` | Installed agent binary path to replace during update. |
 | `service_name` | `"dn42-agent.service"` | systemd service name restarted after an installed update. |
 | `service_path` | `"/etc/systemd/system/dn42-agent.service"` | systemd unit file path checked before restarting. |
+
+### `backup`
+
+When enabled, agent-v2 periodically snapshots `/etc/bird` and `/etc/wireguard` into a private Forgejo/Gitea repository. Use `POST /backup/install` once to provide the node name, Git instance, organization, and API token. The agent stores secrets in a mode-`0600` state file and performs the git/HTTP operations in Go; it does not install the legacy shell script.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `false` | Start the backup loop after configuration is present. Legacy installations enable it automatically after migration. |
+| `state_file` | `"/etc/dn42-agent/backup.yaml"` | Absolute path where the generated backup state (including the API token) is stored. |
+| `work_dir` | `"/var/lib/dn42-agent/backup"` | Absolute path of the local git checkout used for snapshots. |
+| `bird_dir` | `"/etc/bird"` | Absolute path sampled into the repository as `bird/`. |
+| `wireguard_dir` | `"/etc/wireguard"` | Absolute path sampled into the repository as `wireguard/`. |
+| `interval` | `"5m"` | Interval between periodic sync runs. |
+| `on_boot_delay` | `"3m"` | Delay before the first sync after the agent starts. |
+| `random_delay` | `"30s"` | Random jitter added to the initial sync delay. |
+
+On startup, the agent detects the legacy shell installation at `/etc/bgp-backup/bgp-backup.conf`, `/etc/systemd/system/bgp-backup.{service,timer}`, and `/usr/local/bin/bgp-backup-sync.sh`. It copies the old configuration into `state_file` (including credentials recovered from `REPO_URL`), then stops/disables and removes the old systemd units and sync script.
 
 ### `looking_glass`
 

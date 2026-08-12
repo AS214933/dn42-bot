@@ -395,6 +395,100 @@ Downloads and installs the selected release asset to `auto_update.agent_path`. I
 
 ---
 
+### POST /backup/status
+
+Returns the current DN42 BGP/WireGuard backup installation and migration status.
+
+**Request Body:** Empty.
+
+**Response (JSON):**
+```json
+{
+  "enabled": true,
+  "installed": true,
+  "legacy_detected": false,
+  "legacy_migrated": true,
+  "node_name": "cn01",
+  "git_instance": "https://git.example.com",
+  "git_org": "dn42-backup",
+  "repo_name": "cn01",
+  "repo_url": "https://git.example.com/dn42-backup/cn01",
+  "work_dir": "/var/lib/bgp-backup/repo",
+  "bird_dir": "/etc/bird",
+  "wireguard_dir": "/etc/wireguard",
+  "last_sync_at": "2026-08-12T10:00:00Z"
+}
+```
+
+The response never contains the API token.
+
+**Status Codes:**
+- `200 OK` — Always
+- `403 Forbidden` — Invalid or missing token
+
+---
+
+### POST /backup/install
+
+Installs or upgrades the Go-based backup service. If the target repository does not exist, it is created and the current `/etc/bird` and `/etc/wireguard` configurations are pushed. If the repository already exists, `existing_repo_action` selects whether to restore the remote configuration or overwrite the remote with local configuration.
+
+**Request Body (JSON):**
+```json
+{
+  "node_name": "cn01",
+  "git_instance": "https://git.example.com",
+  "git_org": "dn42-backup",
+  "api_token": "forgejo-token",
+  "existing_repo_action": "restore"
+}
+```
+
+`existing_repo_action` may be `restore` or `overwrite` and is required when the repository already exists.
+
+**Response (JSON):**
+```json
+{
+  "installed": true,
+  "node_name": "cn01",
+  "repo_name": "cn01",
+  "repo_url": "https://git.example.com/dn42-backup/cn01",
+  "repo_existed": true,
+  "action_taken": "restore"
+}
+```
+
+**Status Codes:**
+- `200 OK` — Installed or restored successfully
+- `400 Bad Request` — Invalid JSON
+- `403 Forbidden` — Invalid or missing token
+- `502 Bad Gateway` — API authentication, repository, git, or state-file operation failed
+
+---
+
+### POST /backup/sync
+
+Runs one backup synchronization immediately. The agent snapshots local configuration, commits it, merges remote changes (remote human edits take priority), and pushes the result.
+
+**Request Body:** Empty.
+
+**Response (JSON):**
+```json
+{
+  "synced": true,
+  "committed": true,
+  "pushed": true,
+  "remote_merged": false,
+  "message": ""
+}
+```
+
+**Status Codes:**
+- `200 OK` — Sync completed
+- `403 Forbidden` — Invalid or missing token
+- `502 Bad Gateway` — Backup is not installed or a git/filesystem operation failed
+
+---
+
 ### POST /errorlist
 
 Returns a list of all peers with detected issues (config mismatches, stale handshakes, BIRD session errors).

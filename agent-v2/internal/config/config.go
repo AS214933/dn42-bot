@@ -33,6 +33,17 @@ type AutoUpdateConfig struct {
 	ServicePath   string        `yaml:"service_path"`
 }
 
+type BackupConfig struct {
+	Enabled      bool          `yaml:"enabled" json:"enabled"`
+	StateFile    string        `yaml:"state_file" json:"state_file"`
+	WorkDir      string        `yaml:"work_dir" json:"work_dir"`
+	BirdDir      string        `yaml:"bird_dir" json:"bird_dir"`
+	WireGuardDir string        `yaml:"wireguard_dir" json:"wireguard_dir"`
+	Interval     time.Duration `yaml:"interval" json:"interval"`
+	OnBootDelay  time.Duration `yaml:"on_boot_delay" json:"on_boot_delay"`
+	RandomDelay  time.Duration `yaml:"random_delay" json:"random_delay"`
+}
+
 type LookingGlassConfig struct {
 	Enabled                 bool          `yaml:"enabled" json:"enabled"`
 	AllowedCIDRs            []string      `yaml:"allowed_cidrs" json:"allowed_cidrs"`
@@ -76,6 +87,7 @@ type Config struct {
 	ServerURL              string             `yaml:"server_url"`
 	DNSServers             []string           `yaml:"dns_servers"`
 	AutoUpdate             AutoUpdateConfig   `yaml:"auto_update"`
+	Backup                 BackupConfig       `yaml:"backup"`
 	LookingGlass           LookingGlassConfig `yaml:"looking_glass"`
 	PeerFinder             PeerFinderConfig   `yaml:"peerfinder"`
 }
@@ -103,8 +115,20 @@ type rawConfig struct {
 	ServerURL              *string               `yaml:"server_url"`
 	DNSServers             []string              `yaml:"dns_servers"`
 	AutoUpdate             rawAutoUpdateConfig   `yaml:"auto_update"`
+	Backup                 rawBackupConfig       `yaml:"backup"`
 	LookingGlass           rawLookingGlassConfig `yaml:"looking_glass"`
 	PeerFinder             rawPeerFinderConfig   `yaml:"peerfinder"`
+}
+
+type rawBackupConfig struct {
+	Enabled      bool    `yaml:"enabled"`
+	StateFile    *string `yaml:"state_file"`
+	WorkDir      *string `yaml:"work_dir"`
+	BirdDir      *string `yaml:"bird_dir"`
+	WireGuardDir *string `yaml:"wireguard_dir"`
+	Interval     *string `yaml:"interval"`
+	OnBootDelay  *string `yaml:"on_boot_delay"`
+	RandomDelay  *string `yaml:"random_delay"`
 }
 
 type rawAutoUpdateConfig struct {
@@ -207,6 +231,11 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	backup, err := normalizeBackup(raw.Backup)
+	if err != nil {
+		return nil, err
+	}
+
 	lookingGlass, err := normalizeLookingGlass(raw.LookingGlass)
 	if err != nil {
 		return nil, err
@@ -263,6 +292,7 @@ func Load(path string) (*Config, error) {
 		ServerURL:              serverURL,
 		DNSServers:             dnsServers,
 		AutoUpdate:             autoUpdate,
+		Backup:                 backup,
 		LookingGlass:           lookingGlass,
 		PeerFinder:             peerFinder,
 	}
@@ -379,6 +409,64 @@ func normalizeLookingGlass(raw rawLookingGlassConfig) (LookingGlassConfig, error
 			return LookingGlassConfig{}, fmt.Errorf("invalid looking_glass.max_output_bytes %d: expected 1-65536", *raw.MaxOutputBytes)
 		}
 		cfg.MaxOutputBytes = *raw.MaxOutputBytes
+	}
+
+	return cfg, nil
+}
+
+func normalizeBackup(raw rawBackupConfig) (BackupConfig, error) {
+	cfg := BackupConfig{
+		Enabled:      raw.Enabled,
+		StateFile:    "/etc/dn42-agent/backup.yaml",
+		WorkDir:      "/var/lib/dn42-agent/backup",
+		BirdDir:      "/etc/bird",
+		WireGuardDir: "/etc/wireguard",
+		Interval:     5 * time.Minute,
+		OnBootDelay:  3 * time.Minute,
+		RandomDelay:  30 * time.Second,
+	}
+	if raw.StateFile != nil && strings.TrimSpace(*raw.StateFile) != "" {
+		cfg.StateFile = strings.TrimSpace(*raw.StateFile)
+	}
+	if raw.WorkDir != nil && strings.TrimSpace(*raw.WorkDir) != "" {
+		cfg.WorkDir = strings.TrimSpace(*raw.WorkDir)
+	}
+	if raw.BirdDir != nil && strings.TrimSpace(*raw.BirdDir) != "" {
+		cfg.BirdDir = strings.TrimSpace(*raw.BirdDir)
+	}
+	if raw.WireGuardDir != nil && strings.TrimSpace(*raw.WireGuardDir) != "" {
+		cfg.WireGuardDir = strings.TrimSpace(*raw.WireGuardDir)
+	}
+
+	durations := map[string]struct {
+		raw  *string
+		dest *time.Duration
+		min  time.Duration
+		max  time.Duration
+	}{
+		"interval":      {raw.Interval, &cfg.Interval, time.Second, 24 * time.Hour},
+		"on_boot_delay": {raw.OnBootDelay, &cfg.OnBootDelay, 0, 24 * time.Hour},
+		"random_delay":  {raw.RandomDelay, &cfg.RandomDelay, 0, time.Hour},
+	}
+	for field, item := range durations {
+		if item.raw != nil && strings.TrimSpace(*item.raw) != "" {
+			value, err := time.ParseDuration(strings.TrimSpace(*item.raw))
+			if err != nil || value < item.min || value > item.max {
+				return BackupConfig{}, fmt.Errorf("invalid backup.%s %q: expected a duration between %s and %s", field, *item.raw, item.min, item.max)
+			}
+			*item.dest = value
+		}
+	}
+
+	for field, path := range map[string]string{
+		"state_file":    cfg.StateFile,
+		"work_dir":      cfg.WorkDir,
+		"bird_dir":      cfg.BirdDir,
+		"wireguard_dir": cfg.WireGuardDir,
+	} {
+		if !filepath.IsAbs(path) {
+			return BackupConfig{}, fmt.Errorf("invalid backup.%s %q: expected absolute path", field, path)
+		}
 	}
 
 	return cfg, nil

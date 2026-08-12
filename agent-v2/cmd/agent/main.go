@@ -51,6 +51,14 @@ func main() {
 	})
 	go updater.Run(ctx)
 
+	backup := service.NewBackupManager(cfg.Backup, service.BackupDeps{RunCommand: runCmd})
+	if migration, err := backup.MigrateLegacy(ctx); err != nil {
+		log.Printf("legacy bgp-backup migration failed: %v", err)
+	} else if migration.Migrated {
+		log.Printf("legacy bgp-backup migrated and old systemd units uninstalled")
+	}
+	go backup.Run(ctx)
+
 	// /version — no auth
 	r.Post("/version", handler.VersionHandler())
 	if err := registerLookingGlassRoutes(r, cfg, dnsResolver); err != nil {
@@ -93,6 +101,10 @@ func main() {
 		r.Handle("/restart", handler.NewRestartHandler(cfg, runCmd))
 		r.Post("/update/check", handler.UpdateCheckHandler(updater))
 		r.Post("/update/apply", handler.UpdateApplyHandler(updater))
+
+		r.Post("/backup/status", handler.BackupStatusHandler(backup))
+		r.Post("/backup/install", handler.BackupInstallHandler(backup))
+		r.Post("/backup/sync", handler.BackupSyncHandler(backup))
 
 		r.Handle("/errorlist", &handler.ErrorListHandler{
 			Cfg: cfg,

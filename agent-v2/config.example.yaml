@@ -54,6 +54,20 @@ peerfinder:
   secret_key: ""
   # secret_key_file: "/etc/dn42-agent/peerfinder.key"
 
+# Optional DN42 BGP/WireGuard configuration backup. When enabled, agent-v2
+# periodically snapshots /etc/bird and /etc/wireguard into a private Forgejo/
+# Gitea repository. Use POST /backup/install for initial setup. Existing
+# shell-based bgp-backup installations are migrated automatically at startup.
+backup:
+  enabled: false
+  state_file: "/etc/dn42-agent/backup.yaml"
+  work_dir: "/var/lib/dn42-agent/backup"
+  bird_dir: "/etc/bird"
+  wireguard_dir: "/etc/wireguard"
+  interval: "5m"
+  on_boot_delay: "3m"
+  random_delay: "30s"
+
 # Manual update endpoints always use this configuration. Set enabled=true to
 # let the agent periodically install newer GitHub release binaries by itself.
 # Channel "candidate" includes prereleases such as alpha/beta/rc; "stable"
