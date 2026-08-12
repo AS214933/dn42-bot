@@ -289,3 +289,75 @@ func TestBackupManagerInstallCreate(t *testing.T) {
 		t.Fatalf("persisted api_token = %v", persisted["api_token"])
 	}
 }
+
+func TestBackupManagerMigrateLegacy(t *testing.T) {
+	dir := t.TempDir()
+	legacyConfig := filepath.Join(dir, "bgp-backup.conf")
+	legacyService := filepath.Join(dir, "bgp-backup.service")
+	legacyTimer := filepath.Join(dir, "bgp-backup.timer")
+	legacyScript := filepath.Join(dir, "bgp-backup-sync.sh")
+	for _, path := range []string{legacyConfig, legacyService, legacyTimer, legacyScript} {
+		if err := os.WriteFile(path, []byte("legacy"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(legacyConfig, []byte(`NODE_NAME="cn01"
+WORK_DIR="/var/lib/bgp-backup/repo"
+BIRD_DIR="/etc/bird"
+WG_DIR="/etc/wireguard"
+GIT_INSTANCE="https://git.example.com"
+GIT_ORG="dn42-backup"
+REPO_NAME="cn01"
+REPO_URL="https://alice:secret-token@git.example.com/dn42-backup/cn01.git"
+INSTALL_DATE="2026-08-12 10:00:00"
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateFile := filepath.Join(dir, "backup.yaml")
+	var commands []string
+	manager := NewBackupManager(config.BackupConfig{
+		StateFile:    stateFile,
+		WorkDir:      filepath.Join(dir, "new-repo"),
+		BirdDir:      filepath.Join(dir, "bird"),
+		WireGuardDir: filepath.Join(dir, "wireguard"),
+	}, BackupDeps{
+		LegacyConfigPath: legacyConfig,
+		LegacyPaths:      []string{legacyConfig, legacyService, legacyTimer, legacyScript},
+		RunCommand: func(_ context.Context, name string, args []string, _ time.Duration) (string, error) {
+			commands = append(commands, name+" "+strings.Join(args, " "))
+			return "", nil
+		},
+	})
+
+	result, err := manager.MigrateLegacy(context.Background())
+	if err != nil {
+		t.Fatalf("MigrateLegacy() returned error: %v", err)
+	}
+	if !result.Detected || !result.Migrated || !result.Uninstalled {
+		t.Fatalf("unexpected migration result: %+v", result)
+	}
+
+	state, err := manager.readState()
+	if err != nil {
+		t.Fatalf("readState() returned error: %v", err)
+	}
+	if state == nil || state.NodeName != "cn01" || state.APIToken != "secret-token" || state.GitUser != "alice" {
+		t.Fatalf("migrated state = %+v", state)
+	}
+	if state.WorkDir != "/var/lib/bgp-backup/repo" {
+		t.Fatalf("legacy work dir not preserved: %+v", state)
+	}
+	for _, path := range []string{legacyConfig, legacyService, legacyTimer, legacyScript} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("legacy file %s still exists: %v", path, err)
+		}
+	}
+	if !manager.IsEnabled() {
+		t.Fatal("manager should be enabled after migration")
+	}
+	joined := strings.Join(commands, "\n")
+	if !strings.Contains(joined, "systemctl stop bgp-backup.timer bgp-backup.service") {
+		t.Fatalf("legacy timer was not stopped: %q", joined)
+	}
+}

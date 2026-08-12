@@ -91,9 +91,11 @@ type BackupMigrationResult struct {
 }
 
 type BackupDeps struct {
-	RunCommand func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error)
-	HTTPClient *http.Client
-	Now        func() time.Time
+	RunCommand       func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error)
+	HTTPClient       *http.Client
+	Now              func() time.Time
+	LegacyConfigPath string
+	LegacyPaths      []string
 }
 
 type BackupManager struct {
@@ -121,13 +123,23 @@ func NewBackupManager(cfg config.BackupConfig, deps BackupDeps) *BackupManager {
 	if now == nil {
 		now = time.Now
 	}
+	legacyConfigPath := deps.LegacyConfigPath
+	if legacyConfigPath == "" {
+		legacyConfigPath = legacyBackupConfigPath
+	}
+	legacyPaths := append([]string{}, deps.LegacyPaths...)
+	if len(legacyPaths) == 0 {
+		legacyPaths = []string{legacyBackupConfigPath, legacyBackupServicePath, legacyBackupTimerPath, legacyBackupScriptPath}
+	}
 
 	m := &BackupManager{
 		cfg: cfg,
 		deps: BackupDeps{
-			RunCommand: runCmd,
-			HTTPClient: client,
-			Now:        now,
+			RunCommand:       runCmd,
+			HTTPClient:       client,
+			Now:              now,
+			LegacyConfigPath: legacyConfigPath,
+			LegacyPaths:      legacyPaths,
 		},
 	}
 
@@ -746,7 +758,7 @@ func (m *BackupManager) writeState(state *BackupState) error {
 }
 
 func (m *BackupManager) readLegacyState() (*BackupState, error) {
-	data, err := os.ReadFile(legacyBackupConfigPath)
+	data, err := os.ReadFile(m.deps.LegacyConfigPath)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -758,7 +770,7 @@ func (m *BackupManager) readLegacyState() (*BackupState, error) {
 
 func (m *BackupManager) existingLegacyPaths() []string {
 	var paths []string
-	for _, path := range []string{legacyBackupConfigPath, legacyBackupServicePath, legacyBackupTimerPath, legacyBackupScriptPath} {
+	for _, path := range m.deps.LegacyPaths {
 		if _, err := os.Stat(path); err == nil {
 			paths = append(paths, path)
 		}
