@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-const AgentVersion = 31
+const AgentVersion = 32
 
 func VersionHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

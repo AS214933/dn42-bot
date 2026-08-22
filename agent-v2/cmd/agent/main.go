@@ -52,10 +52,14 @@ func main() {
 	go updater.Run(ctx)
 
 	backup := service.NewBackupManager(cfg.Backup, service.BackupDeps{RunCommand: runCmd})
-	if migration, err := backup.MigrateLegacy(ctx); err != nil {
+	if migration, err := backup.MigrateLegacy(ctx, configPath); err != nil {
 		log.Printf("legacy bgp-backup migration failed: %v", err)
 	} else if migration.Migrated {
-		log.Printf("legacy bgp-backup migrated and old systemd units uninstalled")
+		if migration.ConfigSaved {
+			log.Printf("legacy bgp-backup migrated; credentials saved to %s and old systemd units uninstalled", configPath)
+		} else {
+			log.Printf("legacy bgp-backup migrated and old systemd units uninstalled")
+		}
 	}
 	go backup.Run(ctx)
 

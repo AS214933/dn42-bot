@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
 // requireGit skips git-dependent integration tests when no git binary exists.
@@ -340,12 +341,39 @@ INSTALL_DATE="2026-08-12 10:00:00"
 		},
 	})
 
-	result, err := manager.MigrateLegacy(context.Background())
+	agentConfig := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(agentConfig, []byte("secret: \"s\"\nbackup:\n  enabled: false\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := manager.MigrateLegacy(context.Background(), agentConfig)
 	if err != nil {
 		t.Fatalf("MigrateLegacy() returned error: %v", err)
 	}
-	if !result.Detected || !result.Migrated || !result.Uninstalled {
+	if !result.Detected || !result.Migrated || !result.Uninstalled || !result.ConfigSaved {
 		t.Fatalf("unexpected migration result: %+v", result)
+	}
+
+	// The migrated credentials must have been written back into config.yaml.
+	savedConfig, err := os.ReadFile(agentConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved struct {
+		Backup struct {
+			Enabled     bool   `yaml:"enabled"`
+			NodeName    string `yaml:"node_name"`
+			GitInstance string `yaml:"git_instance"`
+			GitOrg      string `yaml:"git_org"`
+			APIToken    string `yaml:"api_token"`
+		} `yaml:"backup"`
+	}
+	if err := yaml.Unmarshal(savedConfig, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if saved.Backup.NodeName != "cn01" || saved.Backup.GitOrg != "dn42-backup" ||
+		saved.Backup.APIToken != "secret-token" || saved.Backup.GitInstance != "https://git.example.com" {
+		t.Fatalf("bootstrap fields not written to config.yaml: %+v", saved.Backup)
 	}
 
 	state, err := manager.readState()

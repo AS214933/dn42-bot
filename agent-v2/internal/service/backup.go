@@ -92,6 +92,7 @@ type BackupMigrationResult struct {
 	Detected    bool     `json:"detected"`
 	Migrated    bool     `json:"migrated"`
 	Uninstalled bool     `json:"uninstalled"`
+	ConfigSaved bool     `json:"config_saved"`
 	LegacyPaths []string `json:"legacy_paths"`
 	Message     string   `json:"message,omitempty"`
 }
@@ -406,7 +407,7 @@ func (m *BackupManager) Install(ctx context.Context, req BackupInstallRequest) (
 	return result, nil
 }
 
-func (m *BackupManager) MigrateLegacy(ctx context.Context) (BackupMigrationResult, error) {
+func (m *BackupManager) MigrateLegacy(ctx context.Context, configPath string) (BackupMigrationResult, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -444,7 +445,21 @@ func (m *BackupManager) MigrateLegacy(ctx context.Context) (BackupMigrationResul
 	m.legacyMigrated = true
 	result.Migrated = true
 	result.Uninstalled = true
-	result.Message = "migrated legacy bgp-backup configuration and uninstalled the old systemd timer/script"
+
+	// One-time write-back: persist the migrated credentials into the agent's
+	// own config.yaml so the bootstrap block survives even if backup.yaml is
+	// lost. This is the only code path that ever edits the config file.
+	state := m.state
+	saved, err := SaveBackupBootstrapToConfig(configPath, state.NodeName, state.GitInstance, state.GitOrg, state.APIToken)
+	if err != nil {
+		// Non-fatal: the migration itself succeeded; the operator can add the
+		// bootstrap fields by hand and backup.yaml already has everything.
+		log.Printf("WARN: could not record migrated backup credentials in %s: %v", configPath, err)
+		result.Message = "migrated legacy bgp-backup configuration and uninstalled the old systemd timer/script (config write-back failed: " + err.Error() + ")"
+		return result, nil
+	}
+	result.ConfigSaved = saved
+	result.Message = "migrated legacy bgp-backup configuration into " + configPath + " and uninstalled the old systemd timer/script"
 	return result, nil
 }
 
