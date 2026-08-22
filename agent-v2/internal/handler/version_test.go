@@ -18,8 +18,8 @@ func TestVersionReturns200PlainText(t *testing.T) {
 	if ct := rec.Header().Get("Content-Type"); ct != "text/plain" {
 		t.Errorf("expected Content-Type text/plain, got %s", ct)
 	}
-	if body := rec.Body.String(); body != "30\n" {
-		t.Errorf("expected body %q, got %q", "30\n", body)
+	if body := rec.Body.String(); body != "31\n" {
+		t.Errorf("expected body %q, got %q", "31\n", body)
 	}
 }
 
@@ -32,7 +32,7 @@ func TestVersionDoesNotRequireAuth(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status 200 without auth, got %d", rec.Code)
 	}
-	if body := rec.Body.String(); body != "30\n" {
-		t.Errorf("expected body %q, got %q", "30\n", body)
+	if body := rec.Body.String(); body != "31\n" {
+		t.Errorf("expected body %q, got %q", "31\n", body)
 	}
 }

@@ -42,6 +42,10 @@ type BackupConfig struct {
 	Interval     time.Duration `yaml:"interval" json:"interval"`
 	OnBootDelay  time.Duration `yaml:"on_boot_delay" json:"on_boot_delay"`
 	RandomDelay  time.Duration `yaml:"random_delay" json:"random_delay"`
+	NodeName     string        `yaml:"node_name" json:"node_name,omitempty"`
+	GitInstance  string        `yaml:"git_instance" json:"git_instance,omitempty"`
+	GitOrg       string        `yaml:"git_org" json:"git_org,omitempty"`
+	APIToken     string        `yaml:"api_token" json:"-"`
 }
 
 type LookingGlassConfig struct {
@@ -129,6 +133,10 @@ type rawBackupConfig struct {
 	Interval     *string `yaml:"interval"`
 	OnBootDelay  *string `yaml:"on_boot_delay"`
 	RandomDelay  *string `yaml:"random_delay"`
+	NodeName     *string `yaml:"node_name"`
+	GitInstance  *string `yaml:"git_instance"`
+	GitOrg       *string `yaml:"git_org"`
+	APIToken     *string `yaml:"api_token"`
 }
 
 type rawAutoUpdateConfig struct {
@@ -437,6 +445,18 @@ func normalizeBackup(raw rawBackupConfig) (BackupConfig, error) {
 	if raw.WireGuardDir != nil && strings.TrimSpace(*raw.WireGuardDir) != "" {
 		cfg.WireGuardDir = strings.TrimSpace(*raw.WireGuardDir)
 	}
+	if raw.NodeName != nil {
+		cfg.NodeName = strings.TrimSpace(*raw.NodeName)
+	}
+	if raw.GitInstance != nil {
+		cfg.GitInstance = strings.TrimRight(strings.TrimSpace(*raw.GitInstance), "/")
+	}
+	if raw.GitOrg != nil {
+		cfg.GitOrg = strings.TrimSpace(*raw.GitOrg)
+	}
+	if raw.APIToken != nil {
+		cfg.APIToken = strings.TrimSpace(*raw.APIToken)
+	}
 
 	durations := map[string]struct {
 		raw  *string
@@ -467,6 +487,25 @@ func normalizeBackup(raw rawBackupConfig) (BackupConfig, error) {
 		if !filepath.IsAbs(path) {
 			return BackupConfig{}, fmt.Errorf("invalid backup.%s %q: expected absolute path", field, path)
 		}
+	}
+
+	// Unattended bootstrap requires either all credentials or none.
+	bootstrapFields := map[string]string{
+		"node_name":    cfg.NodeName,
+		"git_instance": cfg.GitInstance,
+		"git_org":      cfg.GitOrg,
+		"api_token":    cfg.APIToken,
+	}
+	set, missing := 0, ""
+	for field, value := range bootstrapFields {
+		if value != "" {
+			set++
+		} else if missing == "" || field == "api_token" {
+			missing = field
+		}
+	}
+	if set > 0 && set < len(bootstrapFields) {
+		return BackupConfig{}, fmt.Errorf("invalid backup.%s: bootstrap requires node_name, git_instance, git_org, and api_token together", missing)
 	}
 
 	return cfg, nil

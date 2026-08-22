@@ -57,6 +57,11 @@ backup:
   interval: "5m"
   on_boot_delay: "3m"
   random_delay: "30s"
+  # Unattended bootstrap (all four fields required together):
+  # node_name: "cn01"
+  # git_instance: "https://git.example.com"
+  # git_org: "dn42-backup"
+  # api_token: ""
 auto_update:
   enabled: false
   channel: "candidate"
@@ -147,6 +152,8 @@ The updater is intended for bare-metal deployments where the operator has alread
 
 When enabled, agent-v2 periodically snapshots `/etc/bird` and `/etc/wireguard` into a private Forgejo/Gitea repository. Use `POST /backup/install` once to provide the node name, Git instance, organization, and API token. The agent stores secrets in a mode-`0600` state file and performs the git/HTTP operations in Go; it does not install the legacy shell script.
 
+Sync is bidirectional and **remote-authoritative**: before committing local samples the agent merges `origin/main` with `-X theirs`, so human edits made through the Git web UI always win conflicts. Whenever remote history moved, the merged content is applied back onto `/etc/bird` and `/etc/wireguard`, BIRD is reloaded over its control socket, and restored WireGuard interfaces that are not yet up are started via `wg-quick up`. The node's own post-merge sample is then committed on top, so genuinely local changes still reach the repository.
+
 | Field | Default | Description |
 |-------|---------|-------------|
 | `enabled` | `false` | Start the backup loop after configuration is present. Legacy installations enable it automatically after migration. |
@@ -157,8 +164,14 @@ When enabled, agent-v2 periodically snapshots `/etc/bird` and `/etc/wireguard` i
 | `interval` | `"5m"` | Interval between periodic sync runs. |
 | `on_boot_delay` | `"3m"` | Delay before the first sync after the agent starts. |
 | `random_delay` | `"30s"` | Random jitter added to the initial sync delay. |
+| `node_name` | `""` | Unattended bootstrap: node name. Requires the other three bootstrap fields. |
+| `git_instance` | `""` | Unattended bootstrap: Forgejo/Gitea base URL. |
+| `git_org` | `""` | Unattended bootstrap: target organization. |
+| `api_token` | `""` | Unattended bootstrap: API token with repository read/write access. |
 
 On startup, the agent detects the legacy shell installation at `/etc/bgp-backup/bgp-backup.conf`, `/etc/systemd/system/bgp-backup.{service,timer}`, and `/usr/local/bin/bgp-backup-sync.sh`. It copies the old configuration into `state_file` (including credentials recovered from `REPO_URL`), then stops/disables and removes the old systemd units and sync script.
+
+**Unattended bootstrap / node migration:** when all four bootstrap fields (`node_name`, `git_instance`, `git_org`, `api_token`) are set in the config and no backup state exists yet, the agent self-installs at startup without a `POST /backup/install` call. The remote repository is always authoritative in this flow: if the repository already exists — for example because you migrated the agent to a new machine while the old node's backups remain on the Git server — its content is pulled back onto `/etc` (restore), BIRD is reloaded, missing WireGuard interfaces are brought up, and only afterwards does periodic sync resume. A missing repository is created from the current local configuration. Partial bootstrap blocks (some fields set but not all) are rejected at config load time.
 
 ### `looking_glass`
 

@@ -11,11 +11,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/birdctl"
 	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
 )
 
@@ -72,6 +74,7 @@ type BackupStatus struct {
 	LastSyncAt     string   `json:"last_sync_at,omitempty"`
 	LastSyncError  string   `json:"last_sync_error,omitempty"`
 	LegacyPaths    []string `json:"legacy_paths,omitempty"`
+	BootstrapDone  bool     `json:"bootstrap_done,omitempty"`
 }
 
 type BackupSyncResult struct {
@@ -79,6 +82,9 @@ type BackupSyncResult struct {
 	Committed    bool   `json:"committed"`
 	Pushed       bool   `json:"pushed"`
 	RemoteMerged bool   `json:"remote_merged"`
+	Restored     bool   `json:"restored"`
+	BirdReloaded bool   `json:"bird_reloaded"`
+	WGRestarted  int    `json:"wg_restarted"`
 	Message      string `json:"message,omitempty"`
 }
 
@@ -96,6 +102,7 @@ type BackupDeps struct {
 	Now              func() time.Time
 	LegacyConfigPath string
 	LegacyPaths      []string
+	BirdCtlPath      string
 }
 
 type BackupManager struct {
@@ -106,6 +113,7 @@ type BackupManager struct {
 	state          *BackupState
 	enabled        bool
 	legacyMigrated bool
+	bootstrapDone  bool
 	lastSyncAt     time.Time
 	lastSyncErr    string
 }
@@ -131,6 +139,10 @@ func NewBackupManager(cfg config.BackupConfig, deps BackupDeps) *BackupManager {
 	if len(legacyPaths) == 0 {
 		legacyPaths = []string{legacyBackupConfigPath, legacyBackupServicePath, legacyBackupTimerPath, legacyBackupScriptPath}
 	}
+	birdCtlPath := deps.BirdCtlPath
+	if birdCtlPath == "" {
+		birdCtlPath = birdctl.DefaultSocketPath
+	}
 
 	m := &BackupManager{
 		cfg: cfg,
@@ -140,6 +152,7 @@ func NewBackupManager(cfg config.BackupConfig, deps BackupDeps) *BackupManager {
 			Now:              now,
 			LegacyConfigPath: legacyConfigPath,
 			LegacyPaths:      legacyPaths,
+			BirdCtlPath:      birdCtlPath,
 		},
 	}
 
@@ -164,6 +177,7 @@ func (m *BackupManager) Status() BackupStatus {
 		Enabled:        m.enabled,
 		Installed:      m.state != nil,
 		LegacyMigrated: m.legacyMigrated,
+		BootstrapDone:  m.bootstrapDone,
 	}
 	legacyPaths := m.existingLegacyPaths()
 	status.LegacyDetected = len(legacyPaths) > 0
@@ -191,9 +205,10 @@ func (m *BackupManager) Run(ctx context.Context) {
 	interval := m.cfg.Interval
 	onBootDelay := m.cfg.OnBootDelay
 	randomDelay := m.cfg.RandomDelay
+	needsBootstrap := m.state == nil && m.bootstrapRequest() != nil
 	m.mu.Unlock()
 
-	if !enabled {
+	if !enabled && !needsBootstrap {
 		return
 	}
 	if interval <= 0 {
@@ -201,6 +216,20 @@ func (m *BackupManager) Run(ctx context.Context) {
 	}
 	if onBootDelay < 0 {
 		onBootDelay = 0
+	}
+	runBootstrap := func() {
+		if _, err := m.Bootstrap(ctx); err != nil {
+			log.Printf("bgp backup bootstrap failed: %v", err)
+			m.mu.Lock()
+			m.lastSyncAt = m.deps.Now().UTC()
+			m.lastSyncErr = "bootstrap: " + err.Error()
+			m.mu.Unlock()
+		}
+	}
+	if needsBootstrap {
+		// Bootstrap (install or restore-from-remote) must not wait out the
+		// normal on-boot jitter: a migrated node wants its config back ASAP.
+		runBootstrap()
 	}
 	delay := onBootDelay
 	if randomDelay > 0 {
@@ -214,6 +243,20 @@ func (m *BackupManager) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
+			// Retry bootstrap first: until it succeeds the node has no state.
+			m.mu.Lock()
+			stillNeedsBootstrap := m.state == nil && m.bootstrapRequest() != nil
+			m.mu.Unlock()
+			if stillNeedsBootstrap {
+				runBootstrap()
+				m.mu.Lock()
+				installed := m.state != nil
+				m.mu.Unlock()
+				if !installed {
+					timer.Reset(interval)
+					continue
+				}
+			}
 			if _, err := m.Sync(ctx); err != nil {
 				log.Printf("bgp backup sync failed: %v", err)
 			}
@@ -246,6 +289,49 @@ func (m *BackupManager) Sync(ctx context.Context) (BackupSyncResult, error) {
 	m.lastSyncAt = m.deps.Now().UTC()
 	m.lastSyncErr = ""
 	return result, nil
+}
+
+// bootstrapRequest returns install credentials from config.yaml when the
+// unattended bootstrap block is fully populated and no state exists yet.
+func (m *BackupManager) bootstrapRequest() *BackupInstallRequest {
+	if m.cfg.APIToken == "" || m.cfg.GitInstance == "" || m.cfg.GitOrg == "" || m.cfg.NodeName == "" {
+		return nil
+	}
+	return &BackupInstallRequest{
+		NodeName:    m.cfg.NodeName,
+		GitInstance: m.cfg.GitInstance,
+		GitOrg:      m.cfg.GitOrg,
+		APIToken:    m.cfg.APIToken,
+	}
+}
+
+// Bootstrap self-installs the backup on a node that has credentials in
+// config.yaml but no local state yet — the node-migration scenario. The
+// remote repository is always authoritative: when it already exists the
+// remote content is pulled back onto /etc (restore) and daemons restart;
+// only a missing repository is created from current local configuration.
+func (m *BackupManager) Bootstrap(ctx context.Context) (BackupInstallResult, error) {
+	m.mu.Lock()
+	req := m.bootstrapRequest()
+	installed := m.state != nil
+	m.mu.Unlock()
+	if req == nil {
+		if installed {
+			return BackupInstallResult{Installed: true, ActionTaken: "already-installed"}, nil
+		}
+		return BackupInstallResult{}, fmt.Errorf("backup bootstrap requires node_name, git_instance, git_org, and api_token in the config")
+	}
+	// Remote wins: a repo left over from the previous node installation must
+	// never be silently overwritten by an empty local /etc.
+	req.ExistingRepoAction = "restore"
+	result, err := m.Install(ctx, *req)
+	if err == nil {
+		m.mu.Lock()
+		m.bootstrapDone = true
+		m.mu.Unlock()
+		log.Printf("bgp backup bootstrap complete via %s", result.ActionTaken)
+	}
+	return result, err
 }
 
 func (m *BackupManager) Install(ctx context.Context, req BackupInstallRequest) (BackupInstallResult, error) {
@@ -377,6 +463,39 @@ func (m *BackupManager) syncLocked(ctx context.Context) (BackupSyncResult, error
 		return result, err
 	}
 
+	// Fetch first so the merge below sees current remote history.
+	_, _ = m.runGit(ctx, workDir, "fetch", "origin", "main")
+	local, _ := m.gitRevParse(ctx, workDir, "HEAD")
+	remote, _ := m.gitRevParse(ctx, workDir, "origin/main")
+
+	// Bidirectional sync, remote authoritative: merge remote history before
+	// committing local samples so human edits always win conflicts.
+	var restored backupRestoreStats
+	if remote == "" {
+		// Empty remote repository (or fresh clone): publish the local samples.
+		if err := m.snapshotAndCommit(ctx, state, "自动备份: "); err != nil {
+			return result, err
+		}
+		result.Committed = true
+	} else if local != remote {
+		result.RemoteMerged = true
+		if _, err := m.runGit(ctx, workDir, "merge", "--no-edit", "-X", "theirs", "origin/main"); err != nil {
+			// Unresolvable (e.g. unrelated histories): remote wins outright.
+			_, _ = m.runGit(ctx, workDir, "merge", "--abort")
+			if _, err := m.runGit(ctx, workDir, "reset", "--hard", "origin/main"); err != nil {
+				return result, fmt.Errorf("reset to origin/main: %w", err)
+			}
+		}
+		// The merged worktree is now the authoritative config. Apply it to /etc
+		// BEFORE re-sampling: otherwise the next sample step would copy the old
+		// local files over the merge result and silently discard human edits.
+		applied, err := m.restoreDirsFromRepo(ctx, state)
+		if err != nil {
+			return result, err
+		}
+		restored = applied
+	}
+
 	if err := copyDir(birdDir, filepath.Join(workDir, "bird"), []string{"*.sock"}, nil, nil); err != nil {
 		return result, fmt.Errorf("sample bird config: %w", err)
 	}
@@ -400,34 +519,6 @@ func (m *BackupManager) syncLocked(ctx context.Context) (BackupSyncResult, error
 		result.Committed = true
 	}
 
-	_, _ = m.runGit(ctx, workDir, "fetch", "origin", "main")
-
-	local, _ := m.gitRevParse(ctx, workDir, "HEAD")
-	remote, _ := m.gitRevParse(ctx, workDir, "origin/main")
-
-	if remote != "" && local != remote {
-		rebaseOut, err := m.runGit(ctx, workDir, "rebase", "--strategy-option=theirs", "origin/main")
-		if err != nil {
-			_, _ = m.runGit(ctx, workDir, "rebase", "--abort")
-			_, _ = m.runGit(ctx, workDir, "reset", "--hard", "origin/main")
-			if err := copyDir(birdDir, filepath.Join(workDir, "bird"), []string{"*.sock"}, nil, nil); err != nil {
-				return result, fmt.Errorf("resample bird config: %w", err)
-			}
-			if err := copyDir(wireGuardDir, filepath.Join(workDir, "wireguard"), nil, nil, nil); err != nil {
-				return result, fmt.Errorf("resample wireguard config: %w", err)
-			}
-			_, _ = m.runGit(ctx, workDir, "add", "-A")
-			if changedAfterReset, _ := m.gitStatus(ctx, workDir); changedAfterReset {
-				_, _ = m.runGit(ctx, workDir, "commit", "-m", "重新采样: "+m.deps.Now().UTC().Format("2006-01-02 15:04:05"))
-			}
-		}
-		_ = rebaseOut
-		result.RemoteMerged = true
-		if err := m.restoreDirsFromRepo(ctx, state); err != nil {
-			return result, err
-		}
-	}
-
 	local, _ = m.gitRevParse(ctx, workDir, "HEAD")
 	remote, _ = m.gitRevParse(ctx, workDir, "origin/main")
 	if remote != "" && local != remote {
@@ -442,7 +533,7 @@ func (m *BackupManager) syncLocked(ctx context.Context) (BackupSyncResult, error
 				return result, ctx.Err()
 			case <-time.After(5 * time.Second):
 			}
-			_, _ = m.runGit(ctx, workDir, "pull", "--rebase", "--strategy-option=theirs", "origin", "main")
+			_, _ = m.runGit(ctx, workDir, "pull", "--rebase", "-X", "ours", "origin", "main")
 		}
 		if !pushed {
 			return result, fmt.Errorf("git push origin main failed after 3 attempts")
@@ -450,15 +541,47 @@ func (m *BackupManager) syncLocked(ctx context.Context) (BackupSyncResult, error
 		result.Pushed = true
 	}
 
+	// Remote is authoritative: after a remote merge the /etc content came from
+	// the repo; report what was restored. The node's own sample was taken
+	// afterwards, so any genuinely local change is still committed and pushed.
+	if restored.birdReloaded || restored.wgRestarted > 0 {
+		result.Restored = true
+		result.BirdReloaded = restored.birdReloaded
+		result.WGRestarted = restored.wgRestarted
+	}
+
 	result.Synced = true
 	return result, nil
+}
+
+func (m *BackupManager) snapshotAndCommit(ctx context.Context, state *BackupState, prefix string) error {
+	if err := copyDir(state.BirdDir, filepath.Join(state.WorkDir, "bird"), []string{"*.sock"}, nil, nil); err != nil {
+		return fmt.Errorf("sample bird config: %w", err)
+	}
+	if err := copyDir(state.WireGuardDir, filepath.Join(state.WorkDir, "wireguard"), nil, nil, nil); err != nil {
+		return fmt.Errorf("sample wireguard config: %w", err)
+	}
+	if _, err := m.runGit(ctx, state.WorkDir, "add", "-A"); err != nil {
+		return fmt.Errorf("git add: %w", err)
+	}
+	changed, err := m.gitStatus(ctx, state.WorkDir)
+	if err != nil {
+		return fmt.Errorf("git status: %w", err)
+	}
+	if changed {
+		if _, err := m.runGit(ctx, state.WorkDir, "commit", "-m", prefix+m.deps.Now().UTC().Format("2006-01-02 15:04:05")); err != nil {
+			return fmt.Errorf("git commit: %w", err)
+		}
+	}
+	return nil
 }
 
 func (m *BackupManager) restoreExisting(ctx context.Context, state *BackupState) error {
 	if err := m.cloneRepo(ctx, state); err != nil {
 		return err
 	}
-	return m.restoreDirsFromRepo(ctx, state)
+	_, err := m.restoreDirsFromRepo(ctx, state)
+	return err
 }
 
 func (m *BackupManager) overwriteExisting(ctx context.Context, state *BackupState) error {
@@ -567,30 +690,94 @@ func (m *BackupManager) configureGitIdentity(ctx context.Context, state *BackupS
 	return nil
 }
 
-func (m *BackupManager) restoreDirsFromRepo(ctx context.Context, state *BackupState) error {
+type backupRestoreStats struct {
+	birdReloaded bool
+	wgRestarted  int
+}
+
+func (m *BackupManager) restoreDirsFromRepo(ctx context.Context, state *BackupState) (backupRestoreStats, error) {
+	var stats backupRestoreStats
+
 	birdRepoDir := filepath.Join(state.WorkDir, "bird")
 	if hasEntries(birdRepoDir) {
 		var dirMode os.FileMode = 0755
 		var fileMode os.FileMode = 0644
 		if err := copyDir(birdRepoDir, state.BirdDir, nil, &dirMode, &fileMode); err != nil {
-			return fmt.Errorf("restore bird config: %w", err)
+			return stats, fmt.Errorf("restore bird config: %w", err)
 		}
 		m.reloadBird(ctx)
+		stats.birdReloaded = true
 	}
 
 	wgRepoDir := filepath.Join(state.WorkDir, "wireguard")
 	if hasEntries(wgRepoDir) {
 		var dirMode os.FileMode = 0700
 		var fileMode os.FileMode = 0600
+		before := wgUpInterfaces(ctx, m.runCmd)
 		if err := copyDir(wgRepoDir, state.WireGuardDir, nil, &dirMode, &fileMode); err != nil {
-			return fmt.Errorf("restore wireguard config: %w", err)
+			return stats, fmt.Errorf("restore wireguard config: %w", err)
+		}
+		after := listWGConfNames(state.WireGuardDir)
+		stats.wgRestarted = m.bringUpRestoredWG(ctx, before, after)
+	}
+	return stats, nil
+}
+
+// bringUpRestoredWG starts every restored dn42-* interface that is not
+// currently up. Interfaces that were already running are left alone: their
+// in-kernel state is live and the next agent restart/recovery pass covers
+// config drift, so a bounce would only drop sessions needlessly.
+func (m *BackupManager) bringUpRestoredWG(ctx context.Context, before map[string]bool, restored map[string]bool) int {
+	restarted := 0
+	names := make([]string, 0, len(restored))
+	for name := range restored {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, iface := range names {
+		select {
+		case <-ctx.Done():
+			return restarted
+		default:
+		}
+		if before[iface] {
+			continue
+		}
+		if _, err := m.runCmd(ctx, "wg-quick", []string{"up", iface}, 15*time.Second); err != nil {
+			log.Printf("WARN: wg-quick up %s failed: %v", iface, err)
+			continue
+		}
+		restarted++
+	}
+	return restarted
+}
+
+func wgUpInterfaces(ctx context.Context, runCmd func(ctx context.Context, name string, args []string, timeout time.Duration) (string, error)) map[string]bool {
+	out, _ := runCmd(ctx, "wg", []string{"show", "interfaces"}, 10*time.Second)
+	result := map[string]bool{}
+	for _, iface := range strings.Fields(out) {
+		result[strings.TrimSpace(iface)] = true
+	}
+	return result
+}
+
+func listWGConfNames(wireGuardDir string) map[string]bool {
+	result := map[string]bool{}
+	entries, err := os.ReadDir(wireGuardDir)
+	if err != nil {
+		return result
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, "dn42-") && strings.HasSuffix(name, ".conf") {
+			result[name[:len(name)-5]] = true
 		}
 	}
-	return nil
+	return result
 }
 
 func (m *BackupManager) reloadBird(ctx context.Context) {
-	if _, err := m.runCmd(ctx, "birdc", []string{"configure"}, 10*time.Second); err != nil {
+	if _, err := birdctl.Query(ctx, m.deps.BirdCtlPath, "configure"); err != nil {
 		log.Printf("WARN: BIRD reload failed: %v", err)
 	}
 }

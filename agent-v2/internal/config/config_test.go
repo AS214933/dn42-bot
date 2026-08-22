@@ -644,3 +644,55 @@ vnstat_auto_add: false
 		t.Errorf("MinPeerRequirement = %d, want 0 (negative should become 0)", cfg.MinPeerRequirement)
 	}
 }
+
+func TestLoadBackupBootstrapFields(t *testing.T) {
+	t.Parallel()
+	base := `
+secret: "s"
+my_dn42_link_local_address: "fe80::1"
+my_dn42_ula_address: "fd00::1"
+my_dn42_ipv4_address: "10.0.0.1"
+bird_table_4: "t4"
+bird_table_6: "t6"
+backup:
+%s
+`
+	full := `  enabled: true
+  node_name: "cn01"
+  git_instance: "https://git.example.com"
+  git_org: "dn42-backup"
+  api_token: "tok"
+`
+	path := writeTempConfig(t, fmt.Sprintf(base, full))
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if cfg.Backup.NodeName != "cn01" || cfg.Backup.GitOrg != "dn42-backup" || cfg.Backup.APIToken != "tok" {
+		t.Fatalf("Backup bootstrap fields = %+v", cfg.Backup)
+	}
+	if cfg.Backup.GitInstance != "https://git.example.com" {
+		t.Fatalf("GitInstance = %q", cfg.Backup.GitInstance)
+	}
+
+	// Partial bootstrap blocks are rejected so a typo can never silently
+	// disable the remote-authoritative restore on a migrated node.
+	for _, partial := range []string{
+		`  enabled: true
+  node_name: "cn01"
+`,
+		`  enabled: true
+  node_name: "cn01"
+  git_instance: "https://git.example.com"
+`,
+		`  enabled: true
+  git_instance: "https://git.example.com"
+  git_org: "dn42-backup"
+`,
+	} {
+		path := writeTempConfig(t, fmt.Sprintf(base, partial))
+		if _, err := Load(path); err == nil {
+			t.Error("Load() succeeded, want bootstrap validation error for partial credentials")
+		}
+	}
+}

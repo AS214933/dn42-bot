@@ -58,6 +58,16 @@ peerfinder:
 # periodically snapshots /etc/bird and /etc/wireguard into a private Forgejo/
 # Gitea repository. Use POST /backup/install for initial setup. Existing
 # shell-based bgp-backup installations are migrated automatically at startup.
+#
+# Sync is bidirectional and remote-authoritative: human edits made through the
+# Git web UI always win conflicts, and merged remote content is applied back
+# onto /etc (BIRD reload + wg-quick up for interfaces that are not yet up).
+#
+# Unattended bootstrap: fill in node_name/git_instance/git_org/api_token and a
+# fresh node self-installs on startup. If the remote repository already exists
+# (e.g. you migrated this agent to a new machine), the backup is pulled back
+# onto /etc and WireGuard/BIRD restart; otherwise the repo is created from the
+# current local configuration. All four fields are required together.
 backup:
   enabled: false
   state_file: "/etc/dn42-agent/backup.yaml"
@@ -67,6 +77,10 @@ backup:
   interval: "5m"
   on_boot_delay: "3m"
   random_delay: "30s"
+  # node_name: "cn01"
+  # git_instance: "https://git.example.com"
+  # git_org: "dn42-backup"
+  # api_token: ""
 
 # Manual update endpoints always use this configuration. Set enabled=true to
 # let the agent periodically install newer GitHub release binaries by itself.

@@ -408,6 +408,7 @@ Returns the current DN42 BGP/WireGuard backup installation and migration status.
   "installed": true,
   "legacy_detected": false,
   "legacy_migrated": true,
+  "bootstrap_done": false,
   "node_name": "cn01",
   "git_instance": "https://git.example.com",
   "git_org": "dn42-backup",
@@ -445,6 +446,8 @@ Installs or upgrades the Go-based backup service. If the target repository does 
 
 `existing_repo_action` may be `restore` or `overwrite` and is required when the repository already exists.
 
+The agent also self-installs through this flow at startup when the optional unattended bootstrap fields (`backup.node_name`, `backup.git_instance`, `backup.git_org`, `backup.api_token`) are set in its YAML config and no backup state exists yet. In that bootstrap path the remote is always authoritative: an existing repository is restored onto `/etc`, and only a missing repository is created from the local configuration. See the `backup` section of the configuration reference.
+
 **Response (JSON):**
 ```json
 {
@@ -467,7 +470,7 @@ Installs or upgrades the Go-based backup service. If the target repository does 
 
 ### POST /backup/sync
 
-Runs one backup synchronization immediately. The agent snapshots local configuration, commits it, merges remote changes (remote human edits take priority), and pushes the result.
+Runs one backup synchronization immediately. The agent merges remote changes first (`merge -X theirs`, so remote human edits win conflicts), applies the merged content back onto `/etc` (BIRD reload plus `wg-quick up` for interfaces that are not yet up), then commits and pushes the fresh local sample.
 
 **Request Body:** Empty.
 
@@ -477,10 +480,24 @@ Runs one backup synchronization immediately. The agent snapshots local configura
   "synced": true,
   "committed": true,
   "pushed": true,
-  "remote_merged": false,
+  "remote_merged": true,
+  "restored": true,
+  "bird_reloaded": true,
+  "wg_restarted": 2,
   "message": ""
 }
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `synced` | bool | Sync completed successfully. |
+| `committed` | bool | A local sample commit was created. |
+| `pushed` | bool | The result was pushed to the remote repository. |
+| `remote_merged` | bool | Remote history differed from local and was merged. |
+| `restored` | bool | Merged remote content was applied back onto the config directories. |
+| `bird_reloaded` | bool | BIRD was reloaded after a bird config restore. |
+| `wg_restarted` | int | Number of restored WireGuard interfaces brought up via `wg-quick`. |
+| `message` | string | Additional detail, e.g. `"no local changes"`. |
 
 **Status Codes:**
 - `200 OK` — Sync completed
