@@ -61,6 +61,7 @@ func main() {
 			log.Printf("legacy bgp-backup migrated and old systemd units uninstalled")
 		}
 	}
+	backup.SyncStateIntoConfig(configPath)
 	go backup.Run(ctx)
 
 	// /version — no auth

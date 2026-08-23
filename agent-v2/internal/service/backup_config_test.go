@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bingxin666/dn42-bot/agent-v2/internal/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -203,5 +204,130 @@ func TestSaveBackupBootstrapToConfigRejectsBadInput(t *testing.T) {
 	}
 	if _, err := SaveBackupBootstrapToConfig(listPath, "n", "i", "o", "t"); err == nil {
 		t.Error("non-mapping config should fail")
+	}
+}
+
+func TestSyncStateIntoConfigFoldsStateFileAndRenames(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	original := `secret: "s"
+# backup lives here
+backup:
+  enabled: true
+  work_dir: "/var/lib/dn42-agent/backup"
+`
+	if err := os.WriteFile(configPath, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	stateFile := filepath.Join(dir, "backup.yaml")
+	stateJSON := `{
+	  "node_name": "cn01",
+	  "work_dir": "/var/lib/bgp-backup/repo",
+	  "bird_dir": "/etc/bird",
+	  "wireguard_dir": "/etc/wireguard",
+	  "git_instance": "https://git.example.com",
+	  "git_org": "dn42-backup",
+	  "repo_name": "cn01",
+	  "git_user": "alice",
+	  "api_token": "secret-token",
+	  "installed_at": "2026-08-12T10:00:00Z"
+	}`
+	if err := os.WriteFile(stateFile, []byte(stateJSON), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := NewBackupManager(config.BackupConfig{
+		StateFile: stateFile,
+	}, BackupDeps{})
+
+	if !manager.SyncStateIntoConfig(configPath) {
+		t.Fatal("SyncStateIntoConfig() = false, want true")
+	}
+
+	// config.yaml gained the four fields; comments survive.
+	out, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	if !strings.Contains(text, "# backup lives here") {
+		t.Errorf("comment lost:\n%s", text)
+	}
+	var cfg struct {
+		Backup struct {
+			NodeName    string `yaml:"node_name"`
+			GitInstance string `yaml:"git_instance"`
+			GitOrg      string `yaml:"git_org"`
+			APIToken    string `yaml:"api_token"`
+		} `yaml:"backup"`
+	}
+	if err := yaml.Unmarshal(out, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Backup.NodeName != "cn01" || cfg.Backup.GitInstance != "https://git.example.com" ||
+		cfg.Backup.GitOrg != "dn42-backup" || cfg.Backup.APIToken != "secret-token" {
+		t.Fatalf("bootstrap fields not folded in: %+v", cfg.Backup)
+	}
+
+	// The state file was retired.
+	if _, err := os.Stat(stateFile); !os.IsNotExist(err) {
+		t.Fatalf("state file still present: %v", err)
+	}
+	oldData, err := os.ReadFile(stateFile + ".old")
+	if err != nil {
+		t.Fatalf("state file not renamed: %v", err)
+	}
+	if !strings.Contains(string(oldData), "secret-token") {
+		t.Errorf("renamed state file lost content: %s", oldData)
+	}
+}
+
+func TestSyncStateIntoConfigNoopWhenConfigComplete(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	original := `backup:
+  node_name: "cn01"
+  git_instance: "https://git.example.com"
+  git_org: "dn42-backup"
+  api_token: "already-here"
+`
+	if err := os.WriteFile(configPath, []byte(original), 0644); err != nil {
+		t.Fatal(err)
+	}
+	stateFile := filepath.Join(dir, "backup.yaml")
+	if err := os.WriteFile(stateFile, []byte(`{"node_name":"cn01","api_token":"other"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := NewBackupManager(config.BackupConfig{
+		StateFile:   stateFile,
+		NodeName:    "cn01",
+		GitInstance: "https://git.example.com",
+		GitOrg:      "dn42-backup",
+		APIToken:    "already-here",
+	}, BackupDeps{})
+	if manager.SyncStateIntoConfig(configPath) {
+		t.Error("SyncStateIntoConfig() = true, want false when config already complete")
+	}
+	if _, err := os.Stat(stateFile); err != nil {
+		t.Errorf("state file should be untouched: %v", err)
+	}
+}
+
+func TestSyncStateIntoConfigNoopWithoutState(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("secret: \"s\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	manager := NewBackupManager(config.BackupConfig{
+		StateFile: filepath.Join(dir, "missing.yaml"),
+	}, BackupDeps{})
+	if manager.SyncStateIntoConfig(configPath) {
+		t.Error("SyncStateIntoConfig() = true, want false without a state file")
 	}
 }

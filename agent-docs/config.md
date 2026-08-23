@@ -171,6 +171,8 @@ Sync is bidirectional and **remote-authoritative**: before committing local samp
 
 On startup, the agent detects the legacy shell installation at `/etc/bgp-backup/bgp-backup.conf`, `/etc/systemd/system/bgp-backup.{service,timer}`, and `/usr/local/bin/bgp-backup-sync.sh`. It copies the old configuration into `state_file` (including credentials recovered from `REPO_URL`), writes the four bootstrap fields into its own config.yaml `backup:` block (comment-preserving; this is the only case in which agent-v2 ever edits its config file), then stops/disables and removes the old systemd units and sync script.
 
+The same fold-in runs for a pre-existing state file: if `state_file` exists but the config's `backup:` block lacks any of the four bootstrap fields, the values are written into config.yaml and the state file is renamed to `<state_file>.old` (e.g. `/etc/dn42-agent/backup.yaml.old`). The running backup keeps using the in-memory state either way.
+
 **Unattended bootstrap / node migration:** when all four bootstrap fields (`node_name`, `git_instance`, `git_org`, `api_token`) are set in the config and no backup state exists yet, the agent self-installs at startup without a `POST /backup/install` call. The remote repository is always authoritative in this flow: if the repository already exists — for example because you migrated the agent to a new machine while the old node's backups remain on the Git server — its content is pulled back onto `/etc` (restore), BIRD is reloaded, missing WireGuard interfaces are brought up, and only afterwards does periodic sync resume. A missing repository is created from the current local configuration. Partial bootstrap blocks (some fields set but not all) are rejected at config load time.
 
 ### `looking_glass`

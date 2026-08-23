@@ -164,6 +164,47 @@ func NewBackupManager(cfg config.BackupConfig, deps BackupDeps) *BackupManager {
 	return m
 }
 
+// SyncStateIntoConfig folds an existing backup.yaml state file into the
+// agent's config.yaml: when the config's `backup:` block is missing any of
+// the four bootstrap fields, the values from the state file are written in
+// (comment-preserving) and the state file is renamed to "<state>.old" so the
+// migration happens exactly once. The manager keeps operating from the
+// in-memory state either way; a failure here only means the operator should
+// add the fields by hand. Returns true when the fold was performed.
+func (m *BackupManager) SyncStateIntoConfig(configPath string) bool {
+	m.mu.Lock()
+	state := m.state
+	m.mu.Unlock()
+	if state == nil || configPath == "" {
+		return false
+	}
+	if cfgHasAllBootstrapFields(m.cfg) {
+		return false
+	}
+
+	saved, err := SaveBackupBootstrapToConfig(configPath, state.NodeName, state.GitInstance, state.GitOrg, state.APIToken)
+	if err != nil {
+		log.Printf("WARN: could not record backup credentials from %s into %s: %v", m.cfg.StateFile, configPath, err)
+		return false
+	}
+	if !saved {
+		// Config already had everything under different capitalization of the
+		// check above cannot happen, but stay safe: nothing to migrate.
+		return false
+	}
+	oldPath := m.cfg.StateFile + ".old"
+	if err := os.Rename(m.cfg.StateFile, oldPath); err != nil {
+		log.Printf("WARN: wrote bootstrap fields into %s but could not retire %s: %v", configPath, m.cfg.StateFile, err)
+		return true
+	}
+	log.Printf("backup credentials from %s recorded in %s; state file moved to %s", m.cfg.StateFile, configPath, oldPath)
+	return true
+}
+
+func cfgHasAllBootstrapFields(cfg config.BackupConfig) bool {
+	return cfg.NodeName != "" && cfg.GitInstance != "" && cfg.GitOrg != "" && cfg.APIToken != ""
+}
+
 func (m *BackupManager) IsEnabled() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
