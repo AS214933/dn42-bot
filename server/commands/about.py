@@ -3,7 +3,7 @@ from telebot.types import ReplyKeyboardRemove
 from version import REPOSITORY, UPSTREAM, get_build_date, get_git_commit
 
 
-@bot.message_handler(commands=["about"], is_private_chat=True)
+@bot.message_handler(commands=["about"])
 def show_about(message):
     build_date = get_build_date()
     git_commit = get_git_commit()
